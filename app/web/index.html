@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About · Adaptive Honeypot</title>
+<link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/style.css">
+<script>try{var t=localStorage.getItem('ahp-theme');if(t&&t!=='system')document.documentElement.dataset.theme=t}catch(e){}</script>
+<script src="/js/common.js"></script>
+</head>
+<body>
+<main class="wrap">
+
+<section class="hero">
+  <svg class="art" viewBox="0 0 260 200" fill="none" aria-hidden="true">
+    <rect x="10" y="20" width="110" height="70" rx="12" fill="var(--accent-soft)" stroke="var(--accent)"/>
+    <text x="65" y="50" text-anchor="middle" style="font:700 13px var(--sans);fill:var(--accent)">Attacker</text>
+    <text x="65" y="70" text-anchor="middle" style="font:11px var(--mono);fill:var(--muted)">198.18.x.x</text>
+    <rect x="140" y="20" width="110" height="70" rx="12" fill="var(--surface)" stroke="var(--border-strong)"/>
+    <text x="195" y="50" text-anchor="middle" style="font:700 13px var(--sans);fill:var(--text)">Decoy</text>
+    <text x="195" y="70" text-anchor="middle" style="font:11px var(--mono);fill:var(--muted)">web-prod-01</text>
+    <path d="M120 55h20" stroke="var(--accent)" stroke-width="2" marker-end="url(#a)"/>
+    <rect x="75" y="120" width="120" height="64" rx="12" fill="var(--accent)"/>
+    <text x="135" y="148" text-anchor="middle" style="font:700 13px var(--sans);fill:var(--accent-ink)">Adaptive engine</text>
+    <text x="135" y="166" text-anchor="middle" style="font:11px var(--sans);fill:var(--accent-ink)">profile · learn · adapt</text>
+    <path d="M195 90v14c0 8-6 14-14 14h-6" stroke="var(--accent)" stroke-width="2" marker-end="url(#a)"/>
+    <path d="M95 120v-6c0-8-6-14-14-14h-16V92" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4 4"/>
+    <defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0l10 5-10 5z" fill="var(--accent)"/></marker></defs>
+  </svg>
+  <span class="badge accent">Cyber-deception platform · v1.0.0</span>
+  <h1 style="margin-top:12px">Adaptive Cybersecurity Honeypot</h1>
+  <p class="lead">A decoy system that pretends to be real servers, watches how attackers behave, and <b>changes its own behaviour</b> to keep them engaged longer, so you learn more about their tools, techniques and targets without risking real systems.</p>
+  <div class="pill-row">
+    <span class="badge">5 live decoys: SSH · Telnet · HTTP · FTP · Modbus</span>
+    <span class="badge">UCB1 learning engine</span>
+    <span class="badge">MITRE ATT&amp;CK mapping</span>
+    <span class="badge">STIX 2.1 · MISP · Syslog</span>
+    <span class="badge">Works fully offline</span>
+  </div>
+  <div class="row">
+    <a class="btn primary" href="/dashboard.html">Open the dashboard</a>
+    <a class="btn" href="/login.html">Sign in / Create account</a>
+    <a class="btn soft" href="/games.html">Learn by playing</a>
+  </div>
+</section>
+
+<section class="section">
+  <div class="grid g3">
+    <div class="card"><h3>What is it?</h3><p class="muted">A <b>honeypot</b> is a fake system that has no real users, so anyone who touches it is suspicious by definition. This app runs five of them on your machine and records every login attempt, command and exploit.</p></div>
+    <div class="card"><h3>Why "adaptive"?</h3><p class="muted">Classic honeypots always answer the same way and skilled attackers spot them quickly. Here, a learning engine profiles each visitor (bot, scanner, script kiddie, skilled) and picks the deception strategy that has kept that kind of attacker busiest so far.</p></div>
+    <div class="card"><h3>What do you do here?</h3><p class="muted">Watch attacks live on the <a href="/dashboard.html">Dashboard</a>, launch safe simulated attacks in the <a href="/lab.html">Attack Lab</a>, configure all <a href="/areas.html">nine areas</a>, then export reports and threat intelligence. Every action you take is recorded in <a href="/history.html">History</a>.</p></div>
+  </div>
+</section>
+
+<section class="section">
+  <h2><span class="n">1</span>Architecture as a linked list</h2>
+  <p class="muted">Every attacker interaction travels through the system as a chain of nodes. Each node holds <b>data</b> (what it does) and a <b>next</b> pointer to the stage that receives its output. Click a node to expand it.</p>
+  <div class="ll" id="ll"></div>
+  <div class="notice" style="margin-top:14px"><b>The one back-pointer:</b> when a session ends, node 6 computes a reward and sends it back to node 5. This feedback edge is what makes the system <i>adaptive</i>: the next attacker of the same kind is met with whichever strategy has worked best.</div>
+</section>
+
+<section class="section">
+  <h2><span class="n">2</span>Algorithms used</h2>
+  <div class="grid g2" id="algos"></div>
+</section>
+
+<section class="section">
+  <h2><span class="n">3</span>The nine areas, all live in this app</h2>
+  <div class="grid g3" id="areas"></div>
+</section>
+
+<section class="section">
+  <h2><span class="n">4</span>Get started in 5 steps</h2>
+  <div class="card">
+    <ol class="steps">
+      <li><b>Create your account.</b> The first account becomes the <i>admin</i>. <a href="/login.html">Sign up</a></li>
+      <li><b>Acknowledge governance.</b> The dashboard asks the admin to confirm the legal and safety rules once.</li>
+      <li><b>Generate traffic.</b> In the <a href="/lab.html">Attack Lab</a>, run a single scenario or start a campaign. You can also type into the decoy yourself in the web terminal.</li>
+      <li><b>Watch it adapt.</b> On the <a href="/dashboard.html">Dashboard</a>, see profiles, ATT&amp;CK techniques, alerts and the strategy chosen for each attacker.</li>
+      <li><b>Export intelligence.</b> Download the analysis report, CSV, STIX bundle or your adaptive activity report from <a href="/reports.html">Reports</a>.</li>
+    </ol>
+  </div>
+</section>
+
+<section class="section">
+  <div class="notice"><b>Safety by design:</b> decoys never execute anything; <code>wget</code>, <code>curl</code> and <code>ssh</code> inside them are simulated. Sensors bind to <code>127.0.0.1</code> by default, outbound calls go only to integrations you configure, and simulated attackers use the reserved range <code>198.18.0.0/15</code>.</div>
+</section>
+</main>
+
+<script>
+const NODES = [
+  ["Attacker", "Anyone or anything that connects to a decoy port: a botnet, a scanner, a person, or the built-in simulator.",
+   "Real traffic arrives on the bound address. Lab traffic comes from the simulator with a PROXY header carrying a 198.18.x.x address, which is trusted only from localhost."],
+  ["Sensor layer (decoys)", "Five emulated services: SSH banner (2222), Telnet shell (2323), HTTP portal (8081), FTP (2121), Modbus PLC (5020).",
+   "Each sensor speaks just enough of its protocol to be believable. Telnet and HTTP are fully adaptive; FTP and Modbus capture credentials and commands; SSH records client software."],
+  ["Containment gate", "Checks the kill switch, rate limit per IP, concurrent-session cap and session timeout before serving.",
+   "Dropped connections are written to the audit log. Decoys have no outbound network path at all; downloads are recorded as IOCs, never fetched."],
+  ["Session + consistency store", "Opens a session, assigns the current persona and loads this IP's virtual filesystem.",
+   "Files the attacker created last time are still there when they return, so the illusion stays consistent. State is stored per IP in SQLite."],
+  ["Adaptive engine", "Profiles the attacker (scanner, bot, script kiddie, skilled) and selects a strategy with a UCB1 bandit.",
+   "Strategies: static (baseline), breadcrumbs (canary credentials), tarpit (latency), rich (high interaction plus optional local LLM). It re-decides after the 3rd command. Personas rotate on a schedule (morphing)."],
+  ["Response generator", "Emulated Linux shell, fake web pages, FTP listings and PLC register values, all synthesised.",
+   "Unknown commands go to a local Ollama model when the 'rich' strategy and LLM are enabled; otherwise a realistic bash error is returned. Reward = 0.6×commands + 0.4×duration (normalised)."],
+  ["Data pipeline", "Tags every event with MITRE ATT&CK techniques, extracts IOCs (IPs, URLs, domains, hashes, user-agents) and enriches them.",
+   "Enrichment uses AbuseIPDB (IP reputation) and VirusTotal (URLs) when API keys are set. Threat score = sum of technique severities + breadcrumbs + logins + IOCs, capped at 100."],
+  ["Storage", "A local SQLite database: sessions, events, IOCs, credentials, alerts, bandit statistics and the audit trail.",
+   "A retention job purges data older than the configured number of days. Optional IP anonymisation masks the last octet."],
+  ["Alerting + threat intel", "Raises alerts on high threat, canary use or ICS writes, and delivers them by webhook or syslog (CEF).",
+   "Exports a STIX 2.1 bundle (indicators, attack patterns, relationships) and can push a MISP event. Mean time to detect is measured per alert."],
+  ["Console + reports", "This web app: dashboard, nine-area control centre, lab, history and audit log, reports and games.",
+   "Reports: HTML analysis (printable to PDF), sessions and IOC CSV, JSON, STIX, and an adaptive analysis of your own console activity."],
+];
+const ll = document.getElementById("ll");
+NODES.forEach((n, i) => {
+  const addr = "0x" + (0x1a0 + i * 0x10).toString(16).toUpperCase();
+  const next = i < NODES.length - 1 ? "0x" + (0x1a0 + (i + 1) * 0x10).toString(16).toUpperCase() : "NULL";
+  const node = document.createElement("div");
+  node.className = "ll-node";
+  node.innerHTML = `<div class="idx">${i + 1}</div><div class="data"><b>${n[0]}</b><div class="d">${n[1]}</div><div class="more">${n[2]}</div></div>
+    <div class="ptr"><span>node @ <b>${addr}</b></span><span>next → <b>${next}</b></span>${i === 5 ? '<span>prev ↺ <b>0x1E0</b> (reward)</span>' : ""}</div>`;
+  node.onclick = () => node.classList.toggle("open");
+  ll.appendChild(node);
+  const a = document.createElement("div");
+  a.className = "ll-arrow";
+  a.innerHTML = i < NODES.length - 1 ? '<svg viewBox="0 0 22 30" fill="none"><path d="M11 2v22M4 18l7 8 7-8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' : "";
+  ll.appendChild(a);
+});
+const nul = document.createElement("div"); nul.className = "ll-null"; nul.textContent = "→ NULL (end of chain)"; ll.appendChild(nul);
+
+const ALGOS = [
+  ["Attacker profiling (explainable rules)", "Features per session: number of commands, average gap between commands, tool signatures, invalid commands, breadcrumbs read, ATT&CK tactics covered, HTTP scanner user-agents and payloads, Modbus writes.",
+   "gap &lt; 0.35s and ≥3 cmds      → bot\nbusybox / Mirai strings     → bot\nminer / dropper commands    → script kiddie\nsudo -l, history -c, keys   → skilled\n≥4 tactics, human pacing    → skilled\nbanner only / 0 commands    → scanner"],
+  ["UCB1 multi-armed bandit (per profile)", "Chooses one of four strategies for each attacker profile, balancing trying new strategies (exploration) against using the best one so far (exploitation).",
+   "if any arm untried: pick it\nelse pick argmax( mean_reward(a)\n        + c · sqrt( ln N / n(a) ) )\nc = 1.2 (tunable), N = total pulls"],
+  ["Engagement reward", "Measures how much intelligence a session produced. Fed back to the bandit when the session closes.",
+   "reward = 0.6 · min(1, commands / 15)\n       + 0.4 · min(1, duration / 120 s)\n       + 0.1 if breadcrumbs or IOCs captured\n(capped at 1.0)"],
+  ["Threat score (0–100)", "Severity weights are attached to each ATT&CK rule, e.g. T1105 ingress tool transfer = 15, T1485 data destruction = 30, T0855 ICS command = 35.",
+   "score = Σ severity(unique techniques)\n      + 10 · breadcrumbs read\n      + 15 if login succeeded\n      + 3 · IOCs (max 5) + 30 if canary reused\nalert when score ≥ threshold (70)"],
+  ["Persona morphing", "The active identity (hostname, OS, kernel, SSH/HTTP/FTP banners, PLC vendor) rotates on a schedule or on demand, so fingerprints collected by scanners go stale.",
+   "every morph_interval minutes:\n  persona = PERSONAS[(i + 1) mod 4]\npersonas: ubuntu-web, centos-db,\n          iot-camera, debian-dev"],
+  ["ATT&CK tagging, IOC extraction and detection heuristic", "Regex rules map commands and HTTP payloads to technique IDs. IOCs are extracted from every event. A session is flagged as 'suspected honeypot detection' when the attacker runs honeypot checks or leaves right after errors.",
+   "URL / IP / domain / hash regexes → IOC table\ncowrie|honeypot|/proc/1/cgroup → detected\n≥2 unknown cmds and ≤6 cmds total → detected\ndetection rate = detected / sessions"],
+];
+document.getElementById("algos").innerHTML = ALGOS.map((a) => `<div class="card algo"><h3>${a[0]}</h3><p class="muted small">${a[1]}</p><pre class="mono">${a[2]}</pre></div>`).join("");
+
+const AREAS = [
+  ["Scope", "Choose the surfaces to imitate, the deployment mode (lab, internal, internet) and who consumes the output.", "areas.html#scope"],
+  ["Infrastructure", "Ports, bind address, host, data folder and uptime. Everything runs in one local process.", "areas.html#infrastructure"],
+  ["Honeypot sensors", "Start or stop each of the five decoys and see connections and interaction level.", "areas.html#sensors"],
+  ["Adaptive engine", "Profiles, UCB1 bandit table, persona morphing, consistency store and optional local LLM.", "areas.html#adaptive"],
+  ["Data pipeline & analytics", "ATT&CK tagging, IOC extraction, AbuseIPDB/VirusTotal enrichment and the live event stream.", "areas.html#pipeline"],
+  ["Threat-intel output", "STIX 2.1 export, MISP push, webhook and syslog (CEF) alerts with test buttons.", "areas.html#intel"],
+  ["Containment & safety", "Kill switch, egress allow-list, rate limits, session caps and decoy reset.", "areas.html#containment"],
+  ["Governance", "Legal acknowledgement, data retention and purge, IP anonymisation, roles and audit trail.", "areas.html#governance"],
+  ["Success metrics", "Engagement time, commands per session, adaptive vs. static uplift, detection rate and MTTD.", "areas.html#metrics"],
+];
+document.getElementById("areas").innerHTML = AREAS.map((a, i) => `<a class="card area-card" href="/${a[2]}" style="color:inherit;text-decoration:none"><span class="no">${i + 1}</span><h3>${a[0]}</h3><p class="muted small" style="margin:0">${a[1]}</p></a>`).join("");
+
+AHP.init("about", false);
+</script>
+</body>
+</html>

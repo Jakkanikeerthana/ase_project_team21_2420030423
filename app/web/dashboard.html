@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard · Adaptive Honeypot</title>
+<link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/style.css">
+<script>try{var t=localStorage.getItem('ahp-theme');if(t&&t!=='system')document.documentElement.dataset.theme=t}catch(e){}</script>
+<script src="/js/common.js"></script>
+</head>
+<body>
+<main class="wrap">
+  <div class="page-head">
+    <div>
+      <h1>Threat dashboard</h1>
+      <p>Live view of every decoy, attacker and adaptive decision. <span id="personaTxt" class="badge accent">persona…</span> <span id="ksTxt"></span></p>
+    </div>
+    <div class="row">
+      <span class="badge ok" id="liveBadge"><span class="dot live"></span> Live</span>
+      <select id="range" style="width:auto"><option value="1h">Last hour</option><option value="24h" selected>Last 24 hours</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option></select>
+      <label class="row small" style="margin:0;gap:6px"><span class="switch"><input type="checkbox" id="simT" checked><span></span></span> include simulated</label>
+      <a class="btn primary" href="/lab.html">Launch attacks</a>
+    </div>
+  </div>
+
+  <div id="emptyHint" class="notice" style="display:none;margin-bottom:16px">No attacks recorded yet. Open the <a href="/lab.html">Attack Lab</a> and run a scenario or start a campaign. Data will stream in here within seconds.</div>
+
+  <div class="grid g6" id="kpis"></div>
+
+  <div class="grid g3" style="margin-top:16px">
+    <div class="card span2"><div class="card-h"><h3>Attack sessions over time</h3><span class="sub" id="seriesSub"></span></div><div id="line"></div></div>
+    <div class="card"><div class="card-h"><h3>Attacker profiles</h3><span class="sub">adaptive classifier</span></div><div id="donut"></div></div>
+  </div>
+
+  <div class="grid g3" style="margin-top:16px">
+    <div class="card"><div class="card-h"><h3>Live event feed</h3><button class="btn sm" id="pauseBtn">Pause</button></div><div class="feed" id="feed"><div class="empty">Waiting for events…</div></div></div>
+    <div class="card"><div class="card-h"><h3>Active sessions</h3><span class="sub" id="activeN"></span></div><div class="table-wrap" id="active"></div></div>
+    <div class="card"><div class="card-h"><h3>Alerts</h3><button class="btn sm" id="ackAll">Acknowledge all</button></div><div id="alerts"></div></div>
+  </div>
+
+  <div class="grid g3" style="margin-top:16px">
+    <div class="card"><div class="card-h"><h3>Top MITRE ATT&amp;CK techniques</h3></div><div id="techs"></div></div>
+    <div class="card"><div class="card-h"><h3>Decoy sensors</h3><a class="sub" href="/areas.html#sensors">manage</a></div><div id="sensors"></div></div>
+    <div class="card"><div class="card-h"><h3>Origin countries</h3><span class="sub">lab geo for simulated IPs</span></div><div id="countries"></div></div>
+  </div>
+
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><div class="card-h"><h3>Adaptive vs. static baseline</h3><span class="sub" id="uplift"></span></div><div class="table-wrap" id="arms"></div></div>
+    <div class="card"><div class="card-h"><h3>Top attackers</h3><span class="sub">click a row for sessions</span></div><div class="table-wrap" id="topips"></div></div>
+  </div>
+
+  <div class="grid g3" style="margin-top:16px">
+    <div class="card"><div class="card-h"><h3>ATT&amp;CK tactics</h3></div><div id="tactics"></div></div>
+    <div class="card"><div class="card-h"><h3>Credentials tried</h3></div><div class="table-wrap" id="creds"></div></div>
+    <div class="card"><div class="card-h"><h3>Top commands</h3></div><div class="table-wrap" id="cmds"></div></div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="card-h"><h3>Recent sessions</h3><a class="btn sm" href="/history.html#sessions">Full history</a></div>
+    <div class="table-wrap" id="sessions"></div>
+  </div>
+</main>
+
+<script>
+(async function () {
+  const user = await AHP.init("dashboard", true);
+  if (!user) return;
+  const E = AHP.esc, $ = AHP.$;
+  let liveSeq = 0, paused = false, lastData = null, lastLoad = 0;
+
+  if (user.role === "admin" && !user.legal_ack) {
+    const m = AHP.modal(`<h2>Before you start: governance check</h2>
+      <p class="muted">Honeypots record attacker data. Please confirm that:</p>
+      <ul class="small"><li>You are authorised by your organisation to run deception systems on this machine and network.</li>
+      <li>Captured data (IPs, credentials, commands) will be handled per your data-protection policy (e.g. DPDP Act 2023, IT Act 2000) and retained only as long as needed.</li>
+      <li>Decoys will not be used to attack, entrap, or retaliate against anyone. Exposure to the internet happens only after a risk review.</li></ul>
+      <p class="small muted">Defaults: lab mode, bound to 127.0.0.1, ${30}-day retention. You can change these in Nine Areas.</p>
+      <div class="row" style="justify-content:flex-end"><button class="btn" data-close>Later</button><button class="btn primary" id="ackBtn">I acknowledge</button></div>`, { sticky: true });
+    $("#ackBtn").onclick = async () => { await AHP.post("/api/governance/ack"); m.close(); AHP.toast("Acknowledgement recorded in the audit log", "ok"); };
+  }
+
+  const KPI = [
+    ["sessions", "Attack sessions", (k) => AHP.num(k.sessions), (k) => k.unique_ips + " unique IPs"],
+    ["high_threat", "High-threat", (k) => AHP.num(k.high_threat), () => "threat score ≥ 70"],
+    ["iocs", "IOCs captured", (k) => AHP.num(k.iocs), (k) => k.creds + " credentials"],
+    ["avg_duration", "Avg engagement", (k) => AHP.dur(k.avg_duration), (k) => k.avg_commands + " cmds / shell session"],
+    ["detection_rate", "Detection rate", (k) => k.detection_rate + "%", () => "suspected honeypot spotting"],
+    ["open_alerts", "Open alerts", (k) => AHP.num(k.open_alerts), (k) => "MTTD " + k.mttd + "s"],
+  ];
+
+  async function load() {
+    lastLoad = Date.now();
+    const d = await AHP.api(`/api/dashboard?range=${$("#range").value}&sim=${$("#simT").checked ? 1 : 0}`);
+    lastData = d;
+    const k = d.kpis;
+    $("#emptyHint").style.display = k.sessions ? "none" : "block";
+    $("#kpis").innerHTML = KPI.map((x) => `<div class="card kpi"><div class="label">${x[1]}</div><div class="value">${x[2](k)}</div><div class="hint">${x[3](k)}</div></div>`).join("");
+    $("#personaTxt").textContent = "Persona: " + d.persona.label;
+    $("#ksTxt").innerHTML = d.kill_switch ? '<span class="badge bad">KILL SWITCH ON</span>' : (d.campaign ? '<span class="badge warn">campaign running</span>' : "");
+
+    const lbl = d.series.map((p) => { const t = new Date(p.t * 1000); return d.bucket >= 86400 ? t.toLocaleDateString([], { month: "short", day: "numeric" }) : t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); });
+    AHP.lineChart($("#line"), lbl, [{ name: "sessions", values: d.series.map((p) => p.sessions) }, { name: "avg threat", values: d.series.map((p) => p.threat) }], { height: 230 });
+    $("#seriesSub").textContent = d.bucket === 60 ? "per minute" : d.bucket === 3600 ? "per hour" : "per day";
+    const order = ["skilled", "script_kiddie", "bot", "scanner", "unknown"];
+    AHP.donut($("#donut"), order.filter((p) => d.profiles[p]).map((p) => ({ label: AHP.PROFILE[p][0], value: d.profiles[p] })), { label: "sessions" });
+
+    $("#active").innerHTML = d.active.length ? `<table><thead><tr><th>Sensor</th><th>IP</th><th>Profile</th><th>Threat</th></tr></thead><tbody>${d.active.map((a) => `<tr class="click" data-id="${a.id}"><td>${E(a.sensor)}</td><td class="mono small">${E(a.ip)}</td><td>${AHP.profile(a.profile)}</td><td>${AHP.threat(a.threat)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">No attacker connected right now</div>';
+    $("#activeN").textContent = d.active.length + " connected";
+    $("#alerts").innerHTML = d.alerts_recent.length ? d.alerts_recent.map((a) => `<div class="feed-item" style="grid-template-columns:70px 1fr;${a.acknowledged ? "opacity:.55" : ""}"><div>${AHP.sev(a.severity)}</div><div><div class="small">${E(a.title)}</div><div class="faint small">${AHP.ago(a.ts)} · MTTD ${a.mttd.toFixed(1)}s ${a.delivered ? "· sent via " + E(a.delivered) : ""} ${a.acknowledged ? "· ack" : `· <a href="#" data-ack="${a.id}">ack</a>`} · <a href="#" data-sid="${a.session_id}">session</a></div></div></div>`).join("") : '<div class="empty">No alerts. All quiet.</div>';
+
+    AHP.hbars($("#techs"), d.techniques.map((t) => ({ label: t.id + " " + t.name, html: `<span class="badge info">${E(t.id)}</span> ${E(t.name)}`, value: t.count, title: t.name })));
+    $("#sensors").innerHTML = d.sensors_status.map((s) => `<div class="row" style="padding:7px 0;border-bottom:1px dashed var(--border)"><span class="dot ${s.running ? "live" : ""}" style="color:${s.running ? "var(--ok)" : "var(--faint)"}"></span><b style="width:64px">${E(s.name)}</b><span class="mono small muted">:${s.port}</span><span class="spacer"></span><span class="small muted">${s.connections} conn · ${s.active} active</span><span class="badge">${E(s.interaction)}</span></div>`).join("");
+    AHP.hbars($("#countries"), d.countries.map((c) => ({ label: c.country, value: c.c })));
+    const up = d.uplift;
+    $("#uplift").innerHTML = up.duration_pct == null ? "collecting data…" : `engagement <b style="color:${up.duration_pct >= 0 ? "var(--ok)" : "var(--bad)"}">${up.duration_pct > 0 ? "+" : ""}${up.duration_pct}%</b> vs static`;
+    $("#arms").innerHTML = `<table><thead><tr><th>Strategy</th><th>Sessions</th><th>Avg time</th><th>Avg cmds</th><th>Detected</th></tr></thead><tbody>${d.arms.map((a) => `<tr><td>${AHP.strategy(a.arm)}<div class="faint small">${E(a.desc)}</div></td><td>${a.sessions}</td><td>${AHP.dur(a.avg_duration)}</td><td>${a.avg_commands}</td><td>${a.detected}</td></tr>`).join("")}</tbody></table>`;
+    $("#topips").innerHTML = d.top_ips.length ? `<table><thead><tr><th>IP</th><th>Country</th><th>Sessions</th><th>Max threat</th></tr></thead><tbody>${d.top_ips.map((r) => `<tr class="click" data-ip="${E(r.src_ip)}"><td class="mono small">${E(r.src_ip)}</td><td>${E(r.country)}</td><td>${r.c}</td><td>${AHP.threat(r.threat)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">No attackers yet</div>';
+    AHP.hbars($("#tactics"), Object.entries(d.tactics).map(([k, v]) => ({ label: k, value: v })));
+    $("#creds").innerHTML = d.creds.length ? `<table><thead><tr><th>User</th><th>Password</th><th>#</th></tr></thead><tbody>${d.creds.map((c) => `<tr><td class="mono small">${E(c.username)}</td><td class="mono small">${E(c.password)}</td><td>${c.c}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">None yet</div>';
+    $("#cmds").innerHTML = d.commands.length ? `<table><tbody>${d.commands.map((c) => `<tr><td class="mono small" style="word-break:break-all">${E(c.cmd)}</td><td>${c.c}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">None yet</div>';
+
+    const ss = await AHP.api("/api/sessions?limit=12");
+    $("#sessions").innerHTML = ss.length ? `<table><thead><tr><th>Started</th><th>Sensor</th><th>Source</th><th>Profile</th><th>Strategy</th><th>Cmds</th><th>Duration</th><th>Threat</th></tr></thead><tbody>${ss.map((s) => `<tr class="click" data-id="${s.id}"><td class="small">${AHP.fmtDate(s.started)}</td><td>${E(s.sensor)}</td><td class="mono small">${E(s.src_ip)} <span class="faint">${E(s.country)}</span></td><td>${AHP.profile(s.profile)}</td><td>${AHP.strategy(s.strategy)}</td><td>${s.commands}</td><td>${AHP.dur(s.duration)}</td><td>${AHP.threat(s.threat)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">No sessions yet</div>';
+  }
+
+  document.body.addEventListener("click", async (e) => {
+    const tr = e.target.closest("tr[data-id]"); if (tr) return AHP.showSession(tr.dataset.id);
+    const sid = e.target.closest("[data-sid]"); if (sid) { e.preventDefault(); return AHP.showSession(sid.dataset.sid); }
+    const ack = e.target.closest("[data-ack]"); if (ack) { e.preventDefault(); await AHP.post(`/api/alerts/${ack.dataset.ack}/ack`); load(); }
+    const ip = e.target.closest("tr[data-ip]"); if (ip) location.href = "/history.html?q=" + encodeURIComponent(ip.dataset.ip) + "#sessions";
+  });
+  $("#ackAll").onclick = async () => { await AHP.post("/api/alerts/ack-all"); load(); };
+  $("#range").onchange = load; $("#simT").onchange = load;
+  $("#pauseBtn").onclick = () => { paused = !paused; $("#pauseBtn").textContent = paused ? "Resume" : "Pause"; };
+  document.addEventListener("themechange", () => lastData && load());
+
+  const KIND = {
+    session_open: (i) => `<span class="badge">connect</span> <b class="mono">${E(i.ip)}</b> → ${E(i.sensor)} <span class="faint">as ${E(i.persona)} · ${E(AHP.STRAT[i.strategy] || i.strategy)}</span>`,
+    event: (i) => `<span class="badge info">${E(i.sensor)}</span> <span class="mono">${E(i.data)}</span> ${i.techniques.map((t) => `<span class="badge">${E(t)}</span>`).join(" ")}`,
+    adapt: (i) => `<span class="badge accent">adapt</span> ${E(i.ip)} profiled ${E(AHP.PROFILE[i.profile] ? AHP.PROFILE[i.profile][0] : i.profile)} → strategy <b>${E(AHP.STRAT[i.strategy])}</b> <span class="faint">(${E(i.why)})</span>`,
+    profile: (i) => `<span class="badge">profile</span> ${E(i.ip)} → ${AHP.profile(i.profile)}`,
+    alert: (i) => `${AHP.sev(i.severity)} <b>${E(i.title)}</b>`,
+    session_close: (i) => `<span class="badge">closed</span> ${E(i.ip)} · ${i.commands} cmds · ${i.duration}s · reward ${i.reward} · threat ${i.threat}`,
+  };
+  async function live() {
+    try {
+      const r = await AHP.api("/api/live?since=" + liveSeq, { quiet: true });
+      $("#liveBadge").className = "badge ok";
+      if (!paused && r.items.length) {
+        const feed = $("#feed"); if (feed.querySelector(".empty")) feed.innerHTML = "";
+        r.items.forEach((i) => { const f = KIND[i.kind]; if (!f) return; const d = document.createElement("div"); d.className = "feed-item"; d.innerHTML = `<div class="t">${AHP.fmtTime(i.ts)}</div><div class="m">${f(i)}</div>`; if (i.session) { d.style.cursor = "pointer"; d.onclick = () => AHP.showSession(i.session); } feed.prepend(d); });
+        while (feed.children.length > 120) feed.lastChild.remove();
+      }
+      if (r.items.length && liveSeq && Date.now() - lastLoad > 5000) load();
+      liveSeq = r.seq;
+    } catch (e) { $("#liveBadge").className = "badge bad"; }
+  }
+  await load();
+  const first = await AHP.api("/api/live?since=0"); liveSeq = Math.max(0, first.seq - 25);
+  await live();
+  setInterval(live, 2000);
+  setInterval(load, 15000);
+})();
+</script>
+</body>
+</html>

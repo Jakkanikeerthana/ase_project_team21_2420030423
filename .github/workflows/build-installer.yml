@@ -1,0 +1,28 @@
+name: Build Windows installer
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Smoke test (stdlib only)
+        run: python -m py_compile app/run.py app/stop.py app/honeypot/server.py
+      - name: Install build tools
+        run: |
+          pip install zstandard
+          choco install nsis -y
+      - name: Build installer
+        shell: cmd
+        run: |
+          set PATH=%PATH%;C:\Program Files (x86)\NSIS
+          installer\build_installer.bat
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AdaptiveHoneypot-Setup
+          path: installer/build/AdaptiveHoneypot-Setup-*.exe

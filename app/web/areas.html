@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nine Areas · Adaptive Honeypot</title>
+<link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/style.css">
+<script>try{var t=localStorage.getItem('ahp-theme');if(t&&t!=='system')document.documentElement.dataset.theme=t}catch(e){}</script>
+<script src="/js/common.js"></script>
+</head>
+<body>
+<main class="wrap">
+  <div class="page-head">
+    <div><h1>Nine Areas control centre</h1><p>Each area of the project, live and configurable. Changes are applied immediately and recorded in the audit log.</p></div>
+    <div class="row"><span id="roleNote" class="badge"></span><button class="btn" id="reload">${AHP.icons.refresh} Refresh</button></div>
+  </div>
+  <div class="tabs" id="tabs"></div>
+  <div id="panes"></div>
+</main>
+<script>
+(async function () {
+  const user = await AHP.init("areas", true);
+  if (!user) return;
+  const E = AHP.esc, $ = AHP.$, isAdmin = user.role === "admin", canOp = user.role !== "viewer";
+  $("#reload").innerHTML = AHP.icons.refresh + " Refresh";
+  $("#roleNote").textContent = isAdmin ? "admin: full control" : canOp ? "analyst: operate, read-only settings" : "viewer: read-only";
+  const TABS = [["scope", "1 · Scope"], ["infrastructure", "2 · Infrastructure"], ["sensors", "3 · Sensors"], ["adaptive", "4 · Adaptive engine"],
+    ["pipeline", "5 · Data pipeline"], ["intel", "6 · Threat intel"], ["containment", "7 · Containment"], ["governance", "8 · Governance"], ["metrics", "9 · Metrics"]];
+  $("#tabs").innerHTML = TABS.map(([k, l]) => `<button data-k="${k}">${l}</button>`).join("");
+  $("#panes").innerHTML = TABS.map(([k]) => `<section class="tab-pane" id="p-${k}"></section>`).join("");
+  const select = (k) => { AHP.$$("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.k === k)); AHP.$$(".tab-pane").forEach((p) => p.classList.toggle("on", p.id === "p-" + k)); history.replaceState(null, "", "#" + k); };
+  AHP.$$("#tabs button").forEach((b) => (b.onclick = () => select(b.dataset.k)));
+  select((location.hash || "#scope").slice(1));
+  window.addEventListener("hashchange", () => select((location.hash || "#scope").slice(1)));
+
+  let A = null, S = null;
+  const save = async (obj, msg) => { if (!isAdmin) return AHP.toast("Only admins can change settings", "bad"); S = await AHP.post("/api/settings", obj); AHP.toast(msg || "Saved", "ok"); render(); };
+  const dis = isAdmin ? "" : "disabled";
+  const sw = (id, on, d) => `<label class="switch"><input type="checkbox" id="${id}" ${on ? "checked" : ""} ${d === undefined ? dis : d}><span></span></label>`;
+  const kv = (o) => `<dl class="kv">${Object.entries(o).map(([k, v]) => `<dt>${E(k)}</dt><dd>${v}</dd>`).join("")}</dl>`;
+  const intro = (t, d) => `<div class="notice" style="margin-bottom:16px"><b>${t}</b> ${d}</div>`;
+
+  async function render() {
+    [A, S] = await Promise.all([AHP.api("/api/areas"), AHP.api("/api/settings")]);
+
+    // 1. Scope ----------------------------------------------------------------
+    const SURF = { ssh: "SSH (banner)", telnet: "Telnet shell", http: "HTTP admin portal", ftp: "FTP server", modbus: "Modbus/TCP PLC (ICS)" };
+    const DEP = { lab: ["Lab", "Sensors on 127.0.0.1, simulated traffic only. Safest; ideal for evaluation and training."], internal: ["Internal network", "Detects lateral movement inside your LAN. Bind to the internal interface."], internet: ["Internet-facing", "Collects real-world attacks. Needs a dedicated, isolated VM and a risk review."] };
+    const CONS = ["SOC", "CSIRT feed", "Research", "Incubated startups", "Management reporting"];
+    $("#p-scope").innerHTML = intro("Area 1: scope.", "Decide what to imitate, where to deploy, and who consumes the intelligence. These choices drive the rest of the configuration.") + `
+      <div class="grid g3"><div class="card"><h3>Surfaces to imitate</h3>${Object.entries(SURF).map(([k, l]) => `<label class="row" style="color:var(--text);font-weight:500;margin:8px 0"><input type="checkbox" class="surf" value="${k}" ${S.scope_surfaces.includes(k) ? "checked" : ""} ${dis}> ${l}</label>`).join("")}
+        <button class="btn sm soft" id="applySurf" ${dis}>Apply to sensors</button></div>
+      <div class="card"><h3>Deployment mode</h3>${Object.entries(DEP).map(([k, [l, d]]) => `<label class="row" style="color:var(--text);align-items:flex-start;margin:10px 0;flex-wrap:nowrap"><input type="radio" name="dep" value="${k}" ${S.scope_deployment === k ? "checked" : ""} ${dis} style="width:auto;margin-top:4px"><span><b>${l}</b><br><span class="small muted" style="font-weight:400">${d}</span></span></label>`).join("")}</div>
+      <div class="card"><h3>Consumers of the output</h3>${CONS.map((c) => `<label class="row" style="color:var(--text);font-weight:500;margin:8px 0"><input type="checkbox" class="cons" value="${c}" ${S.scope_consumers.includes(c) ? "checked" : ""} ${dis}> ${c}</label>`).join("")}
+        <div class="field" style="margin-top:12px"><label>Organisation name (used in reports and STIX)</label><input id="org" value="${E(S.org_name)}" ${dis}></div></div></div>
+      <div class="row" style="margin-top:14px"><button class="btn primary" id="saveScope" ${dis}>Save scope</button>${S.scope_deployment === "internet" && S.bind_host === "127.0.0.1" ? '<span class="badge warn">Internet mode selected but sensors still bound to 127.0.0.1 (see Infrastructure)</span>' : ""}</div>`;
+    $("#saveScope").onclick = () => save({ scope_surfaces: AHP.$$(".surf:checked").map((x) => x.value), scope_deployment: (AHP.$("input[name=dep]:checked") || {}).value, scope_consumers: AHP.$$(".cons:checked").map((x) => x.value), org_name: $("#org").value }, "Scope saved");
+    $("#applySurf").onclick = () => { const s = AHP.$$(".surf:checked").map((x) => x.value); const en = {}; Object.keys(SURF).forEach((k) => (en[k] = s.includes(k))); save({ scope_surfaces: s, sensors_enabled: en }, "Sensors updated to match scope"); };
+
+    // 2. Infrastructure ----------------------------------------------------------
+    const I = A.infrastructure;
+    $("#p-infrastructure").innerHTML = intro("Area 2: infrastructure.", "Everything runs in one lightweight local process: an embedded Python runtime, an SQLite database and threaded network listeners. Nothing to install separately.") + `
+      <div class="grid g2"><div class="card"><h3>Host</h3>${kv({ "Host name": E(I.host), "Operating system": E(I.os), "Python runtime": E(I.python), "Console URL": `<span class="mono">http://${E(I.ui)}</span>`, "Data folder": `<span class="mono small">${E(I.data_dir)}</span>`, "Database size": I.db_size_kb + " KB", "Threads": I.threads, "Uptime": AHP.dur(I.uptime) })}</div>
+      <div class="card"><h3>Network binding &amp; ports</h3>
+        <div class="field"><label>Bind address for decoys</label><select id="bind" ${dis}><option value="127.0.0.1">127.0.0.1 (this computer only, lab)</option><option value="0.0.0.0">0.0.0.0 (all interfaces, exposed)</option></select></div>
+        <div class="grid g3">${Object.entries(I.ports).map(([k, v]) => `<div class="field"><label>${k}</label><input type="number" class="port" data-k="${k}" value="${v}" min="1024" max="65535" ${dis}></div>`).join("")}</div>
+        <p class="small muted">Ports below 1024 need administrator rights, so the defaults use high ports. In production, forward 22→2222, 23→2323, 80→8081, 21→2121, 502→5020 at the firewall.</p>
+        <button class="btn primary" id="saveInfra" ${dis}>Apply and restart sensors</button></div></div>`;
+    $("#bind").value = I.bind_host;
+    $("#saveInfra").onclick = () => { const ports = {}; AHP.$$(".port").forEach((p) => (ports[p.dataset.k] = +p.value)); const b = $("#bind").value; if (b !== "127.0.0.1" && !confirm("Exposing decoys on all interfaces makes them reachable from your network. Continue?")) return; save({ ports, bind_host: b }, "Sensors restarted"); };
+
+    // 3. Sensors -------------------------------------------------------------------
+    const TRY = { ssh: "ssh -p {p} root@127.0.0.1", telnet: "telnet 127.0.0.1 {p}", http: "http://127.0.0.1:{p}/", ftp: "ftp 127.0.0.1 {p}", modbus: "Modbus client → 127.0.0.1:{p}" };
+    $("#p-sensors").innerHTML = intro("Area 3: honeypot sensors.", "Five decoys emulate real services using only the Python standard library. Start or stop each one. You can also connect to them yourself with the commands shown.") + `<div class="grid g3">${A.sensors.map((s) => `
+      <div class="card"><div class="card-h"><h3 style="text-transform:uppercase">${E(s.name)}</h3><span class="badge ${s.running ? "ok" : s.error ? "bad" : ""}"><span class="dot ${s.running ? "live" : ""}"></span> ${s.running ? "running" : s.error ? "error" : "stopped"}</span></div>
+      <p class="small muted">${E(s.description)}</p>${kv({ Port: `<span class="mono">${s.port}</span>`, Interaction: E(s.interaction), Connections: s.connections, Active: s.active, Uptime: s.running ? AHP.dur(s.uptime) : "-" })}
+      ${s.error ? `<div class="notice bad small" style="margin-top:8px">${E(s.error)}</div>` : ""}
+      <div class="small mono faint" style="margin:10px 0">${E(TRY[s.name].replace("{p}", s.port))}</div>
+      <button class="btn sm ${s.running ? "danger" : "primary"}" data-sensor="${s.name}" data-act="${s.running ? "stop" : "start"}" ${canOp ? "" : "disabled"}>${s.running ? "Stop" : "Start"}</button></div>`).join("")}</div>`;
+    AHP.$$("[data-sensor]").forEach((b) => (b.onclick = async () => { await AHP.post(`/api/sensors/${b.dataset.sensor}/${b.dataset.act}`); setTimeout(render, 600); }));
+
+    // 4. Adaptive engine --------------------------------------------------------------
+    const D = A.adaptive;
+    const profiles = [...new Set(D.bandit.map((b) => b.profile))];
+    const banditTbl = profiles.length ? `<table><thead><tr><th>Profile</th>${Object.keys(D.arms).map((a) => `<th>${E(AHP.STRAT[a])}</th>`).join("")}</tr></thead><tbody>${profiles.map((p) => { const rows = D.bandit.filter((b) => b.profile === p); const best = rows.reduce((m, r) => (r.mean > (m ? m.mean : -1) ? r : m), null); return `<tr><td>${AHP.profile(p)}</td>${Object.keys(D.arms).map((a) => { const r = rows.find((x) => x.arm === a); return `<td>${r ? `<b style="${best && best.arm === a ? "color:var(--accent)" : ""}">${r.mean.toFixed(2)}</b> <span class="faint small">n=${r.pulls}</span>` : '<span class="faint">-</span>'}</td>`; }).join("")}</tr>`; }).join("")}</tbody></table>` : '<div class="empty">The bandit learns once sessions close. Run some attacks in the Lab.</div>';
+    $("#p-adaptive").innerHTML = intro("Area 4: adaptive engine.", "Profiles each attacker, chooses a deception strategy with a UCB1 bandit (learning from the engagement reward), rotates personas, keeps per-attacker state consistent, and can call a local LLM.") + `
+      <div class="grid g3"><div class="card"><div class="card-h"><h3>Engine</h3>${sw("adEn", D.enabled)}</div>
+        <p class="small muted">When off, every attacker gets the static baseline. Useful for A/B comparisons.</p>
+        <div class="field"><label>Exploration constant c (UCB1)</label><input type="number" step="0.1" min="0" max="5" id="bc" value="${D.bandit_c}" ${dis}></div>
+        <div class="row"><button class="btn sm primary" id="saveEng" ${dis}>Save</button><button class="btn sm danger" id="resetBandit" ${dis}>Reset learning</button></div></div>
+      <div class="card"><div class="card-h"><h3>Persona morphing</h3><button class="btn sm soft" id="rotate" ${canOp ? "" : "disabled"}>Rotate now</button></div>
+        <div class="notice small"><b>${E(D.persona.label)}</b> · <span class="mono">${E(D.persona.hostname)}</span><br>${E(D.persona.os)} · ${E(D.persona.ssh_banner)}</div>
+        <div class="field" style="margin-top:10px"><label>Rotate every (minutes)</label><input type="number" min="1" id="mi" value="${D.morph_interval_min}" ${dis}></div>
+        <div class="small muted">Next rotation in ${AHP.dur(D.next_morph_in)} · ${D.personas.length} personas: ${D.personas.map((p) => E(p.key)).join(", ")}</div></div>
+      <div class="card"><div class="card-h"><h3>Local LLM (Ollama)</h3>${sw("llmEn", D.llm_enabled)}</div>
+        <div class="field"><label>Ollama URL</label><input id="ou" value="${E(S.ollama_url)}" ${dis}></div>
+        <div class="grid g2"><div class="field"><label>Model</label><input id="om" value="${E(S.ollama_model)}" ${dis}></div><div class="field"><label>Timeout (s)</label><input id="ot" type="number" value="${S.llm_timeout_s}" ${dis}></div></div>
+        <div class="row"><button class="btn sm primary" id="saveLlm" ${dis}>Save</button><button class="btn sm" id="testLlm" ${canOp ? "" : "disabled"}>Test</button><span class="small muted">${D.llm_calls} calls</span></div>
+        ${D.llm_error ? `<div class="small" style="color:var(--bad);margin-top:6px">${E(D.llm_error)}</div>` : ""}</div></div>
+      <div class="card" style="margin-top:16px"><div class="card-h"><h3>UCB1 bandit: mean engagement reward per profile × strategy</h3><span class="sub">highlighted = currently best</span></div><div class="table-wrap">${banditTbl}</div></div>
+      <div class="grid g2" style="margin-top:16px"><div class="card"><h3>Strategies (bandit arms)</h3>${Object.entries(D.arms).map(([k, v]) => `<div style="margin:8px 0">${AHP.strategy(k)} <span class="small muted">${E(v)}</span></div>`).join("")}</div>
+      <div class="card"><h3>Consistency store</h3><p class="small muted">Per-attacker virtual filesystems remembered across visits: <b>${D.consistency_profiles}</b> attacker(s). Files they create stay there when they return.</p><h4>Profiles</h4>${Object.keys(D.profiles).map((p) => AHP.profile(p)).join(" ")}</div></div>`;
+    const bindSw = (id, key) => { const el = $("#" + id); if (el) el.onchange = () => save({ [key]: el.checked }); };
+    bindSw("adEn", "adaptive_enabled"); bindSw("llmEn", "llm_enabled");
+    $("#saveEng").onclick = () => save({ bandit_c: +$("#bc").value });
+    $("#resetBandit").onclick = async () => { if (confirm("Forget everything the bandit has learned?")) { await AHP.post("/api/engine/reset-bandit"); render(); } };
+    $("#rotate").onclick = async () => { const p = await AHP.post("/api/engine/morph"); AHP.toast("Now posing as " + p.label, "ok"); render(); };
+    $("#mi").onchange = () => save({ morph_interval_min: +$("#mi").value });
+    $("#saveLlm").onclick = () => save({ ollama_url: $("#ou").value, ollama_model: $("#om").value, llm_timeout_s: +$("#ot").value });
+    $("#testLlm").onclick = async () => { $("#testLlm").disabled = true; try { const r = await AHP.post("/api/llm/test"); AHP.modal(`<h3>LLM response</h3><pre class="term" style="height:auto">${E(r.output)}</pre><button class="btn" data-close>Close</button>`); } finally { $("#testLlm").disabled = false; } };
+
+    // 5. Pipeline ------------------------------------------------------------------------
+    const P = A.pipeline;
+    const iocs = await AHP.api("/api/iocs");
+    $("#p-pipeline").innerHTML = intro("Area 5: data pipeline & analytics.", "Every event is tagged with MITRE ATT&CK techniques, IOCs are extracted automatically, and public IPs and URLs are enriched with AbuseIPDB and VirusTotal when keys are configured.") + `
+      <div class="grid g4"><div class="card kpi"><div class="label">Events stored</div><div class="value">${AHP.num(P.events)}</div></div><div class="card kpi"><div class="label">Unique IOCs</div><div class="value">${AHP.num(P.iocs)}</div></div>
+      <div class="card kpi"><div class="label">Enrichment queue</div><div class="value">${P.enrich_queue}</div><div class="hint">${P.enriched} enriched</div></div><div class="card kpi"><div class="label">Live stream seq</div><div class="value">${AHP.num(P.live_seq)}</div></div></div>
+      <div class="grid g3" style="margin-top:16px"><div class="card"><h3>Stages</h3><ol class="steps small"><li><b>Capture:</b> sensor event (command, request, login, PLC call)</li><li><b>Tag:</b> regex rules → ATT&amp;CK technique + severity</li><li><b>Extract:</b> URLs, IPs, domains, hashes, user-agents, SSH clients</li><li><b>Enrich:</b> AbuseIPDB ${P.abuseipdb ? '<span class="badge ok">on</span>' : '<span class="badge">key not set</span>'} · VirusTotal ${P.virustotal ? '<span class="badge ok">on</span>' : '<span class="badge">key not set</span>'}</li><li><b>Score + store:</b> threat score, SQLite, live stream</li></ol><a class="btn sm" href="/toolkit.html#keys">Configure API keys</a></div>
+      <div class="card"><h3>IOC types</h3><div id="iocTypes"></div></div>
+      <div class="card"><h3>Exports</h3><div class="stack"><a class="btn sm" href="/api/reports/analysis?format=iocs">${AHP.icons.download} IOCs (CSV)</a><a class="btn sm" href="/api/intel/stix">${AHP.icons.download} STIX 2.1 bundle</a><a class="btn sm" href="/api/reports/analysis?format=json">${AHP.icons.download} Analytics (JSON)</a></div></div></div>
+      <div class="card" style="margin-top:16px"><div class="card-h"><h3>Latest indicators of compromise</h3><select id="iocF" style="width:auto"><option value="">All types</option>${P.ioc_types.map((t) => `<option>${E(t.type)}</option>`).join("")}</select></div><div class="table-wrap" id="iocTbl"></div></div>`;
+    AHP.hbars($("#iocTypes"), P.ioc_types.map((t) => ({ label: t.type, value: t.c })));
+    const iocRender = (rows) => ($("#iocTbl").innerHTML = rows.length ? `<table><thead><tr><th>Type</th><th>Value</th><th>Sensor</th><th>Sightings</th><th>Last seen</th><th>Enrichment</th></tr></thead><tbody>${rows.slice(0, 80).map((i) => `<tr><td><span class="badge">${E(i.type)}</span></td><td class="mono small" style="word-break:break-all">${E(i.value)}</td><td>${E(i.sensor)}</td><td>${i.count}</td><td class="small">${AHP.ago(i.last_seen)}</td><td class="small mono">${E(i.enrichment || "-")}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">No IOCs yet</div>');
+    iocRender(iocs);
+    $("#iocF").onchange = async () => iocRender(await AHP.api("/api/iocs" + ($("#iocF").value ? "?type=" + $("#iocF").value : "")));
+
+    // 6. Intel -------------------------------------------------------------------------
+    const T = A.intel;
+    $("#p-intel").innerHTML = intro("Area 6: threat-intelligence output.", "Turns raw honeypot data into shareable intelligence and real-time alerts. Outbound destinations are added to the containment egress allow-list automatically.") + `
+      <div class="grid g4"><div class="card kpi"><div class="label">Alerts raised</div><div class="value">${T.alerts}</div></div><div class="card kpi"><div class="label">Delivered externally</div><div class="value">${T.delivered}</div></div><div class="card kpi"><div class="label">STIX indicators</div><div class="value">${T.stix_objects}</div></div><div class="card kpi"><div class="label">Alert threshold</div><div class="value">${T.alert_threshold}</div></div></div>
+      <div class="grid g2" style="margin-top:16px">
+        <div class="card"><div class="card-h"><h3>STIX 2.1 &amp; MISP</h3>${T.misp ? '<span class="badge ok">MISP configured</span>' : '<span class="badge">MISP not set</span>'}</div>
+          <p class="small muted">The STIX bundle contains indicators (IP, URL, domain, hash), ATT&amp;CK attack-patterns and "indicates" relationships. Import it into OpenCTI, MISP or your TIP.</p>
+          <div class="field"><label>MISP URL</label><input id="mu" value="${E(S.misp_url)}" placeholder="https://misp.example.org" ${dis}></div>
+          <div class="field"><label>MISP API key</label><input id="mk" value="${E(S.misp_key)}" placeholder="auth key" ${dis}></div>
+          <div class="row"><button class="btn sm primary" id="saveMisp" ${dis}>Save</button><a class="btn sm" href="/api/intel/stix">${AHP.icons.download} Download STIX</a><button class="btn sm soft" id="pushMisp" ${canOp ? "" : "disabled"}>Push to MISP</button></div></div>
+        <div class="card"><h3>Real-time alerts</h3>
+          <div class="field"><label>Webhook URL (Slack / Teams / Discord / generic JSON)</label><input id="wh" value="${E(S.webhook_url)}" placeholder="https://hooks.slack.com/services/…" ${dis}></div>
+          <div class="grid g2"><div class="field"><label>Syslog host (SIEM)</label><input id="sh" value="${E(S.syslog_host)}" placeholder="10.0.0.5" ${dis}></div><div class="field"><label>Syslog UDP port</label><input id="sp" type="number" value="${S.syslog_port}" ${dis}></div></div>
+          <div class="field"><label>Alert when threat score ≥</label><input id="at" type="number" min="1" max="100" value="${S.alert_threshold}" ${dis}></div>
+          <div class="row"><button class="btn sm primary" id="saveAlert" ${dis}>Save</button><button class="btn sm" id="testWh" ${canOp ? "" : "disabled"}>Test webhook</button><button class="btn sm" id="testSl" ${canOp ? "" : "disabled"}>Test syslog</button></div>
+          <p class="small muted" style="margin-top:8px">Alerts also fire on canary breadcrumb access, canary credential reuse and ICS write commands, whatever the score.</p></div></div>`;
+    $("#saveMisp").onclick = () => save({ misp_url: $("#mu").value, misp_key: $("#mk").value });
+    $("#pushMisp").onclick = async () => { await AHP.post("/api/intel/misp-push"); AHP.toast("IOCs pushed to MISP", "ok"); };
+    $("#saveAlert").onclick = () => save({ webhook_url: $("#wh").value, syslog_host: $("#sh").value, syslog_port: +$("#sp").value, alert_threshold: +$("#at").value });
+    $("#testWh").onclick = async () => { await AHP.post("/api/intel/test-webhook"); AHP.toast("Test webhook sent", "ok"); };
+    $("#testSl").onclick = async () => { await AHP.post("/api/intel/test-syslog"); AHP.toast("Test syslog message sent", "ok"); };
+
+    // 7. Containment -------------------------------------------------------------------------
+    const C = A.containment;
+    $("#p-containment").innerHTML = intro("Area 7: containment & safety.", "Decoys must never become a launch pad. Commands are emulated, outbound traffic is allow-listed, and you can stop everything instantly.") + `
+      <div class="grid g3"><div class="card" style="border-color:${C.kill_switch ? "var(--bad)" : "var(--border)"}"><h3>Kill switch</h3><p class="small muted">Immediately refuses all decoy connections, closes active sessions and stops campaigns.</p>
+        <button class="btn danger ${C.kill_switch ? "on" : ""}" id="ks" style="width:100%;justify-content:center;padding:14px" ${canOp ? "" : "disabled"}>${C.kill_switch ? "KILL SWITCH ENGAGED: click to release" : "Engage kill switch"}</button></div>
+      <div class="card"><h3>Exposure</h3>${kv({ "Bind address": `<span class="mono">${E(C.bind_host)}</span> ${C.exposed ? '<span class="badge warn">exposed</span>' : '<span class="badge ok">local only</span>'}`, "Lab mode": C.lab_mode ? "on (simulator PROXY header trusted from localhost)" : "off", "Decoy outbound": E(C.outbound_from_decoys), "Connections rate-limited": C.rate_limited })}
+        <div class="row" style="margin-top:10px"><span class="small">Lab mode</span>${sw("lab", C.lab_mode)}</div></div>
+      <div class="card"><h3>Limits</h3><div class="field"><label>Max new connections / IP / minute</label><input type="number" id="l1" value="${C.max_conn_per_min}" ${dis}></div><div class="field"><label>Max session length (seconds)</label><input type="number" id="l2" value="${C.max_session_secs}" ${dis}></div><div class="field"><label>Max concurrent sessions per sensor</label><input type="number" id="l3" value="${C.max_concurrent_per_sensor}" ${dis}></div><button class="btn sm primary" id="saveLim" ${dis}>Save limits</button></div></div>
+      <div class="grid g2" style="margin-top:16px"><div class="card"><h3>Egress allow-list</h3><p class="small muted">The only hosts this application may contact (derived from configured integrations). Everything else is blocked and audited.</p>${C.egress_allowlist.length ? C.egress_allowlist.map((h) => `<span class="badge ok mono" style="margin:3px">${E(h)}</span>`).join("") : '<div class="empty">Empty: fully offline</div>'}
+        <h4 style="margin-top:12px">Recently blocked</h4>${C.egress_blocked.length ? C.egress_blocked.map((b) => `<div class="small mono">${AHP.fmtTime(b.ts)} ${E(b.host)}</div>`).join("") : '<div class="small faint">Nothing blocked</div>'}</div>
+      <div class="card"><h3>Reset decoys</h3><p class="small muted">Wipes every per-attacker virtual filesystem (files they created, history). Use after a compromise drill or before a demo.</p><button class="btn danger" id="resetDecoy" ${canOp ? "" : "disabled"}>Reset decoy state</button></div></div>`;
+    $("#ks").onclick = async () => { await AHP.post("/api/containment/killswitch", { on: !C.kill_switch }); render(); };
+    $("#lab").onchange = () => save({ lab_mode: $("#lab").checked });
+    $("#saveLim").onclick = () => save({ max_conn_per_min: +$("#l1").value, max_session_secs: +$("#l2").value, max_concurrent_per_sensor: +$("#l3").value });
+    $("#resetDecoy").onclick = async () => { if (confirm("Wipe all decoy state?")) { await AHP.post("/api/containment/reset-decoys"); AHP.toast("Decoys reset", "ok"); render(); } };
+
+    // 8. Governance ----------------------------------------------------------------------------
+    const G = A.governance;
+    $("#p-governance").innerHTML = intro("Area 8: governance.", "Legal sign-off, data minimisation, retention, access control and a complete audit trail.") + `
+      <div class="grid g3"><div class="card"><h3>Legal acknowledgement</h3>${G.legal_ack ? `<div class="notice small">Acknowledged by <b>${E(G.legal_ack_by)}</b> on ${E(G.legal_ack_at)}</div>` : `<div class="notice warn small">Not yet acknowledged.</div><button class="btn sm primary" id="ack" style="margin-top:8px" ${dis}>Acknowledge now</button>`}
+        <h4 style="margin-top:12px">Standard operating procedure</h4><ol class="small muted" style="padding-left:18px"><li>Get written authorisation before deployment.</li><li>Run in lab mode first; expose only on an isolated VM.</li><li>Review high and critical alerts daily; acknowledge them in the dashboard.</li><li>Share IOCs via STIX/MISP; never retaliate.</li><li>Purge data past the retention period; export an audit log monthly.</li></ol></div>
+      <div class="card"><h3>Data protection</h3><div class="field"><label>Retention (days)</label><input type="number" id="rd" min="1" value="${G.retention_days}" ${dis}></div>
+        <div class="row" style="margin:10px 0"><span class="small">Anonymise attacker IPs (mask last octet)</span><span class="spacer"></span>${sw("anon", G.anonymize_ips)}</div>
+        <div class="row" style="margin:10px 0"><span class="small">Allow self sign-up</span><span class="spacer"></span>${sw("signup", G.allow_signup)}</div>
+        <div class="row"><button class="btn sm primary" id="saveRet" ${dis}>Save</button><button class="btn sm danger" id="purge" ${dis}>Purge old data now</button></div></div>
+      <div class="card"><h3>Audit trail</h3><p class="small muted"><b>${AHP.num(G.audit_entries)}</b> entries. Every sign-in, setting change, simulation, export and acknowledgement is recorded with user, time and IP.</p><a class="btn sm" href="/history.html">Open history</a> <a class="btn sm" href="/api/audit.csv">${AHP.icons.download} Export CSV</a></div></div>
+      <div class="card" style="margin-top:16px"><h3>Users &amp; roles</h3><p class="small muted">admin: everything · analyst: operate decoys, run simulations, export · viewer: read-only</p><div class="table-wrap"><table><thead><tr><th>User</th><th>Email</th><th>Role</th><th>Created</th><th>Last login</th></tr></thead><tbody>${G.users.map((u) => `<tr><td><b>${E(u.username)}</b></td><td>${E(u.email || "-")}</td><td>${isAdmin ? `<select data-uid="${u.id}" style="width:auto">${["admin", "analyst", "viewer"].map((r) => `<option ${r === u.role ? "selected" : ""}>${r}</option>`).join("")}</select>` : E(u.role)}</td><td class="small">${AHP.fmtDate(u.created_at)}</td><td class="small">${AHP.fmtDate(u.last_login)}</td></tr>`).join("")}</tbody></table></div></div>`;
+    if ($("#ack")) $("#ack").onclick = async () => { await AHP.post("/api/governance/ack"); render(); };
+    $("#saveRet").onclick = () => save({ retention_days: +$("#rd").value });
+    $("#anon").onchange = () => save({ anonymize_ips: $("#anon").checked });
+    $("#signup").onchange = () => save({ allow_signup: $("#signup").checked });
+    $("#purge").onclick = async () => { if (!confirm(`Delete data older than ${$("#rd").value} days?`)) return; const r = await AHP.post("/api/governance/purge", { days: +$("#rd").value }); AHP.toast("Purged: " + Object.entries(r).map(([k, v]) => `${k} ${v}`).join(", "), "ok"); render(); };
+    AHP.$$("[data-uid]").forEach((s) => (s.onchange = async () => { await AHP.post(`/api/users/${s.dataset.uid}/role`, { role: s.value }); AHP.toast("Role updated", "ok"); }));
+
+    // 9. Metrics -------------------------------------------------------------------------------
+    const M = A.metrics, k = M.kpis, up = M.uplift;
+    const MET = [["Avg engagement time", AHP.dur(k.avg_duration), "How long attackers stay. Higher = more intelligence.", "↑ vs static baseline"],
+      ["Commands per shell session", k.avg_commands, "Depth of interaction in Telnet / Lab sessions.", "↑"],
+      ["Adaptive uplift (time)", up.duration_pct == null ? "n/a" : (up.duration_pct > 0 ? "+" : "") + up.duration_pct + "%", "Adaptive strategies vs the static arm.", "> 0%"],
+      ["Adaptive uplift (commands)", up.commands_pct == null ? "n/a" : (up.commands_pct > 0 ? "+" : "") + up.commands_pct + "%", "Extra commands drawn out by adaptation.", "> 0%"],
+      ["Suspected detection rate", k.detection_rate + "%", "Sessions where the attacker probably spotted the honeypot.", "↓ < 20%"],
+      ["New IOCs (24h)", k.iocs, "Indicators captured for blocking and sharing.", "↑"],
+      ["Mean time to detect", k.mttd + "s", "From session start to alert.", "↓ < 60s"],
+      ["High-threat sessions", k.high_threat, "Sessions with threat score ≥ 70.", "track"]];
+    $("#p-metrics").innerHTML = intro("Area 9: success metrics.", "Measurable proof that the project works. Agree targets up front, then track them here and in the analysis report.") + `
+      <div class="grid g4">${MET.map((m) => `<div class="card kpi"><div class="label">${m[0]}</div><div class="value">${m[1]}</div><div class="hint">${m[2]}<br><b>Target:</b> ${m[3]}</div></div>`).join("")}</div>
+      <div class="card" style="margin-top:16px"><h3>Per-strategy comparison (24h)</h3><div class="table-wrap"><table><thead><tr><th>Strategy</th><th>Sessions</th><th>Avg duration</th><th>Avg commands</th><th>Avg threat</th><th>Detections</th></tr></thead><tbody>${M.arms.map((a) => `<tr><td>${AHP.strategy(a.arm)}</td><td>${a.sessions}</td><td>${AHP.dur(a.avg_duration)}</td><td>${a.avg_commands}</td><td>${a.avg_threat}</td><td>${a.detected}</td></tr>`).join("")}</tbody></table></div>
+      <div class="row" style="margin-top:12px"><a class="btn sm primary" href="/reports.html">Open reports</a><a class="btn sm" href="/api/reports/analysis?format=html&view=1" target="_blank">View analysis report</a></div></div>`;
+  }
+  $("#reload").onclick = render;
+  await render();
+})();
+</script>
+</body>
+</html>

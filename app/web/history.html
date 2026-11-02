@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>History · Adaptive Honeypot</title>
+<link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/style.css">
+<script>try{var t=localStorage.getItem('ahp-theme');if(t&&t!=='system')document.documentElement.dataset.theme=t}catch(e){}</script>
+<script src="/js/common.js"></script>
+</head>
+<body>
+<main class="wrap">
+  <div class="page-head">
+    <div><h1>History</h1><p>The audit log of every action taken in the console, plus the full history of attacker sessions, alerts and captured credentials.</p></div>
+    <div class="row"><a class="btn" href="/api/audit.csv">Export audit CSV</a><a class="btn" href="/api/reports/analysis?format=csv&range=30d">Export sessions CSV</a></div>
+  </div>
+  <div class="tabs" id="tabs">
+    <button data-k="audit" class="on">Audit log</button><button data-k="sessions">Attacker sessions</button><button data-k="alerts">Alerts</button><button data-k="creds">Credentials</button>
+  </div>
+
+  <section class="tab-pane on" id="p-audit"><div class="card">
+    <div class="row" style="margin-bottom:12px">
+      <input id="aq" placeholder="Search action or detail…" style="max-width:280px">
+      <select id="acat" style="width:auto"><option value="">All categories</option></select>
+      <select id="auser" style="width:auto"><option value="">All users</option></select>
+      <span class="spacer"></span><span class="small muted" id="acount"></span>
+    </div>
+    <div class="table-wrap" id="auditTbl"></div></div></section>
+
+  <section class="tab-pane" id="p-sessions"><div class="card">
+    <div class="row" style="margin-bottom:12px">
+      <input id="sq" placeholder="Search IP or session id…" style="max-width:240px">
+      <select id="sprof" style="width:auto"><option value="">All profiles</option><option value="skilled">Skilled</option><option value="script_kiddie">Script kiddie</option><option value="bot">Bot</option><option value="scanner">Scanner</option><option value="unknown">Unknown</option></select>
+      <select id="ssens" style="width:auto"><option value="">All sensors</option><option>telnet</option><option>http</option><option>ssh</option><option>ftp</option><option>modbus</option><option>lab</option></select>
+      <select id="sstrat" style="width:auto"><option value="">All strategies</option><option value="static">Static</option><option value="breadcrumbs">Breadcrumbs</option><option value="tarpit">Tarpit</option><option value="rich">Rich</option></select>
+      <select id="sthr" style="width:auto"><option value="">Any threat</option><option value="40">≥ 40</option><option value="70">≥ 70</option></select>
+    </div>
+    <div class="table-wrap" id="sessTbl"></div></div></section>
+
+  <section class="tab-pane" id="p-alerts"><div class="card"><div class="table-wrap" id="alertTbl"></div></div></section>
+  <section class="tab-pane" id="p-creds"><div class="card"><div class="table-wrap" id="credTbl"></div></div></section>
+</main>
+<script>
+(async function () {
+  const user = await AHP.init("history", true);
+  if (!user) return;
+  const E = AHP.esc, $ = AHP.$;
+  const sel = (k) => { AHP.$$("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.k === k)); AHP.$$(".tab-pane").forEach((p) => p.classList.toggle("on", p.id === "p-" + k)); history.replaceState(null, "", location.search + "#" + k); load(k); };
+  AHP.$$("#tabs button").forEach((b) => (b.onclick = () => sel(b.dataset.k)));
+  const params = new URLSearchParams(location.search);
+  if (params.get("q")) $("#sq").value = params.get("q");
+  const CAT = { auth: "info", configuration: "warn", operations: "accent", containment: "bad", governance: "ok", reports: "", investigation: "info", adaptive: "accent", intel: "info", system: "" };
+  const deb = (fn) => { let t; return () => { clearTimeout(t); t = setTimeout(fn, 250); }; };
+
+  async function loadAudit() {
+    const q = new URLSearchParams({ q: $("#aq").value, category: $("#acat").value, user: $("#auser").value, limit: 500 });
+    const r = await AHP.api("/api/audit?" + q);
+    if ($("#acat").options.length === 1) r.categories.forEach((c) => $("#acat").add(new Option(c, c)));
+    if ($("#auser").options.length === 1) [...new Set(r.rows.map((x) => x.username))].forEach((u) => $("#auser").add(new Option(u, u)));
+    $("#acount").textContent = r.rows.length + " entries";
+    $("#auditTbl").innerHTML = r.rows.length ? `<table><thead><tr><th>Time</th><th>User</th><th>Category</th><th>Action</th><th>Detail</th><th>IP</th></tr></thead><tbody>${r.rows.map((a) => `<tr><td class="small" style="white-space:nowrap">${AHP.fmtDate(a.ts)}</td><td><b>${E(a.username)}</b></td><td><span class="badge ${CAT[a.category] || ""}">${E(a.category)}</span></td><td class="mono small">${E(a.action)}</td><td class="small" style="word-break:break-word;max-width:420px">${E(a.detail)}</td><td class="mono small faint">${E(a.ip)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">No entries match</div>';
+  }
+  async function loadSessions() {
+    const q = new URLSearchParams({ q: $("#sq").value, profile: $("#sprof").value, sensor: $("#ssens").value, strategy: $("#sstrat").value, min_threat: $("#sthr").value, limit: 500 });
+    for (const [k, v] of [...q]) if (!v) q.delete(k);
+    const rows = await AHP.api("/api/sessions?" + q);
+    $("#sessTbl").innerHTML = rows.length ? `<table><thead><tr><th>Started</th><th>Sensor</th><th>Source</th><th>Profile</th><th>Strategy</th><th>Persona</th><th>Cmds</th><th>Duration</th><th>Threat</th><th></th></tr></thead><tbody>${rows.map((s) => `<tr class="click" data-id="${s.id}"><td class="small" style="white-space:nowrap">${AHP.fmtDate(s.started)}</td><td>${E(s.sensor)}</td><td class="mono small">${E(s.src_ip)} <span class="faint">${E(s.country)}</span></td><td>${AHP.profile(s.profile)}</td><td>${AHP.strategy(s.strategy)}</td><td class="small">${E(s.persona)}</td><td>${s.commands}</td><td>${AHP.dur(s.duration)}</td><td>${AHP.threat(s.threat)}</td><td>${s.simulated ? '<span class="badge">sim</span>' : '<span class="badge bad">real</span>'}${s.detected ? ' <span class="badge warn">det</span>' : ""}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">No sessions match</div>';
+  }
+  async function loadAlerts() {
+    const rows = await AHP.api("/api/alerts");
+    $("#alertTbl").innerHTML = rows.length ? `<table><thead><tr><th>Time</th><th>Severity</th><th>Alert</th><th>MTTD</th><th>Delivered</th><th>Status</th></tr></thead><tbody>${rows.map((a) => `<tr class="click" data-id="${a.session_id}"><td class="small">${AHP.fmtDate(a.ts)}</td><td>${AHP.sev(a.severity)}</td><td>${E(a.title)}</td><td>${a.mttd.toFixed(1)}s</td><td class="small">${E(a.delivered || "-")}</td><td>${a.acknowledged ? '<span class="badge ok">ack</span>' : '<span class="badge warn">open</span>'}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">No alerts</div>';
+  }
+  async function loadCreds() {
+    const rows = await AHP.api("/api/creds");
+    $("#credTbl").innerHTML = rows.length ? `<table><thead><tr><th>Time</th><th>Sensor</th><th>Source</th><th>Username</th><th>Password</th><th>Result</th></tr></thead><tbody>${rows.map((c) => `<tr><td class="small">${AHP.fmtDate(c.ts)}</td><td>${E(c.sensor)}</td><td class="mono small">${E(c.src_ip)}</td><td class="mono">${E(c.username)}</td><td class="mono">${E(c.password)}</td><td>${c.success ? '<span class="badge warn">accepted</span>' : '<span class="badge">rejected</span>'}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">No credentials captured</div>';
+  }
+  function load(k) { ({ audit: loadAudit, sessions: loadSessions, alerts: loadAlerts, creds: loadCreds })[k](); }
+  ["#aq"].forEach((s) => ($(s).oninput = deb(loadAudit)));
+  ["#acat", "#auser"].forEach((s) => ($(s).onchange = loadAudit));
+  $("#sq").oninput = deb(loadSessions);
+  ["#sprof", "#ssens", "#sstrat", "#sthr"].forEach((s) => ($(s).onchange = loadSessions));
+  document.body.addEventListener("click", (e) => { const tr = e.target.closest("tr[data-id]"); if (tr && tr.dataset.id) AHP.showSession(tr.dataset.id); });
+  sel((location.hash || "#audit").slice(1));
+})();
+</script>
+</body>
+</html>

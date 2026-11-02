@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reports · Adaptive Honeypot</title>
+<link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/style.css">
+<script>try{var t=localStorage.getItem('ahp-theme');if(t&&t!=='system')document.documentElement.dataset.theme=t}catch(e){}</script>
+<script src="/js/common.js"></script>
+</head>
+<body>
+<main class="wrap">
+  <div class="page-head">
+    <div><h1>Reports</h1><p>Download the threat analysis and raw data, then see the adaptive analysis of how <i>you</i> use the console.</p></div>
+    <div class="row"><label class="small" style="margin:0">Period</label><select id="range" style="width:auto"><option value="1h">Last hour</option><option value="24h" selected>Last 24 hours</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option><option value="all">All time</option></select></div>
+  </div>
+
+  <div class="grid g3">
+    <div class="card"><div class="card-h"><h3>Threat analysis report</h3><span class="badge accent">HTML · PDF</span></div>
+      <p class="small muted">Executive summary, attacker profiles, origins, ATT&amp;CK techniques and tactics, adaptive-engine performance, top attackers, credentials, commands, IOCs, alerts and recommendations. Use <i>Save as PDF</i> inside the report to make a PDF.</p>
+      <div class="row"><button class="btn primary" data-dl="html">Download</button><button class="btn" id="viewRep">Open in new tab</button></div></div>
+    <div class="card"><div class="card-h"><h3>Raw data</h3><span class="badge">CSV · JSON</span></div>
+      <p class="small muted">For Excel, Python or your SIEM.</p>
+      <div class="stack"><button class="btn sm" data-dl="csv">Sessions (CSV)</button><button class="btn sm" data-dl="iocs">Indicators of compromise (CSV)</button><button class="btn sm" data-dl="json">Full analytics (JSON)</button></div></div>
+    <div class="card"><div class="card-h"><h3>Sharing &amp; audit</h3><span class="badge">STIX 2.1</span></div>
+      <p class="small muted">Share intelligence with CSIRTs and keep compliance evidence.</p>
+      <div class="stack"><a class="btn sm" href="/api/intel/stix">STIX 2.1 bundle (JSON)</a><a class="btn sm" href="/api/audit.csv">Audit log (CSV)</a></div></div>
+  </div>
+
+  <div class="page-head" style="margin-top:34px">
+    <div><h2 style="margin:0">Adaptive analysis report</h2><p>Proportions and ratios of where you spend your time and what you do, compared with what you're defending against. It updates as you use the app.</p></div>
+    <div class="row"><label class="row small" id="allWrap" style="margin:0;display:none"><input type="checkbox" id="allUsers"> all users</label><button class="btn" id="dlAdaptive">Download adaptive report</button></div>
+  </div>
+  <div class="grid g4" id="aKpis"></div>
+  <div class="grid g3" style="margin-top:16px">
+    <div class="card"><div class="card-h"><h3>How you split your time</h3></div><div id="split"></div></div>
+    <div class="card"><div class="card-h"><h3>Time per page</h3><span class="sub">seconds</span></div><div id="pages"></div></div>
+    <div class="card"><div class="card-h"><h3>Insights for you</h3></div><ul id="insights" style="padding-left:18px;margin:0"></ul></div>
+  </div>
+  <div class="grid g3" style="margin-top:16px">
+    <div class="card"><div class="card-h"><h3>When you work</h3><span class="sub">page views by hour</span></div><div id="hours"></div></div>
+    <div class="card"><div class="card-h"><h3>Your actions</h3></div><div id="actions"></div></div>
+    <div class="card"><div class="card-h"><h3>What you're defending against</h3><span class="sub">30 days</span></div><div id="attack"></div><p class="small muted" id="ratio" style="margin-top:8px"></p></div>
+  </div>
+</main>
+<script>
+(async function () {
+  const user = await AHP.init("reports", true);
+  if (!user) return;
+  const $ = AHP.$, E = AHP.esc;
+  const url = (f, view) => `/api/reports/analysis?format=${f}&range=${$("#range").value}${view ? "&view=1" : ""}`;
+  AHP.$$("[data-dl]").forEach((b) => (b.onclick = () => { AHP.downloadUrl(url(b.dataset.dl)); AHP.toast("Download started", "ok"); }));
+  $("#viewRep").onclick = () => window.open(url("html", true), "_blank");
+  $("#dlAdaptive").onclick = () => AHP.downloadUrl("/api/reports/adaptive.html");
+  if (user.role === "admin") $("#allWrap").style.display = "flex";
+  $("#allUsers").onchange = load;
+
+  async function load() {
+    const a = await AHP.api("/api/reports/adaptive" + ($("#allUsers").checked ? "?all=1" : ""));
+    const topGroup = Object.entries(a.ratios).sort((x, y) => y[1] - x[1])[0];
+    const views = a.pages.reduce((s, p) => s + p.views, 0);
+    $("#aKpis").innerHTML = [["Active time tracked", AHP.dur(a.total_secs), "last 30 days"], ["Page views", AHP.num(views), a.pages.length + " different pages"],
+      ["Main focus", topGroup && a.total_secs ? topGroup[0] : "-", topGroup && a.total_secs ? topGroup[1] + "% of time" : "start browsing"],
+      ["Automated : human attackers", a.automation_ratio, "bots + scanners vs. people"]].map((k) => `<div class="card kpi"><div class="label">${k[0]}</div><div class="value">${E(k[1])}</div><div class="hint">${E(k[2])}</div></div>`).join("");
+    AHP.donut($("#split"), Object.entries(a.groups).filter(([, v]) => v > 0).map(([k, v]) => ({ label: k, value: Math.round(v) })), { pct: true, label: "seconds" });
+    AHP.hbars($("#pages"), a.pages.map((p) => ({ label: p.page, value: Math.round(p.secs || 0) })), { suffix: "s" });
+    $("#insights").innerHTML = a.insights.map((i) => `<li style="margin:6px 0">${E(i)}</li>`).join("");
+    AHP.lineChart($("#hours"), a.hours.map((_, h) => String(h).padStart(2, "0")), [{ name: "views", values: a.hours }], { height: 180 });
+    AHP.hbars($("#actions"), a.actions.map((x) => ({ label: x.action, value: x.c })), { empty: "No actions yet" });
+    AHP.donut($("#attack"), Object.entries(a.attack_ratios).map(([k, v]) => ({ label: k, value: v })), { pct: true, label: "% sessions", center: a.kpis.sessions });
+    $("#ratio").innerHTML = `Detection rate ${a.kpis.detection_rate}% · avg engagement ${AHP.dur(a.kpis.avg_duration)} · ${a.kpis.high_threat} high-threat sessions`;
+  }
+  load();
+  document.addEventListener("themechange", load);
+})();
+</script>
+</body>
+</html>

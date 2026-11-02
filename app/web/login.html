@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · Adaptive Honeypot</title>
+<link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/style.css">
+<script>try{var t=localStorage.getItem('ahp-theme');if(t&&t!=='system')document.documentElement.dataset.theme=t}catch(e){}</script>
+<script src="/js/common.js"></script>
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-side">
+    <span class="badge accent" style="align-self:flex-start">Secure console</span>
+    <h1 style="margin-top:14px">Watch attackers. Learn their playbook.<br>Stay out of reach.</h1>
+    <p class="muted" style="max-width:520px">Sign in to monitor the decoys, run simulated attacks, tune the adaptive engine and export threat intelligence. Every action is written to the audit log.</p>
+    <ul class="steps" style="margin-top:18px;max-width:520px">
+      <li><b>First account = admin.</b> Later accounts are analysts unless an admin promotes them.</li>
+      <li><b>Passwords are hashed</b> with PBKDF2-SHA256 (200,000 rounds). Sessions use HttpOnly, SameSite cookies.</li>
+      <li><b>Brute-force protection:</b> 8 failed attempts lock that address for 5 minutes. Yes, the console defends itself too.</li>
+    </ul>
+  </div>
+  <div class="auth-form">
+    <div class="card auth-card">
+      <div class="tabs" id="authTabs">
+        <button class="on" data-tab="in">Sign in</button>
+        <button data-tab="up">Create account</button>
+      </div>
+      <div id="firstRun" class="notice" style="display:none;margin-bottom:12px">Welcome! No accounts exist yet, so <b>create the administrator account</b> to get started.</div>
+      <form id="fIn" class="tab-pane on" autocomplete="on">
+        <div class="field"><label for="u1">Username</label><input id="u1" name="username" autocomplete="username" required></div>
+        <div class="field"><label for="p1">Password</label><input id="p1" name="password" type="password" autocomplete="current-password" required></div>
+        <div class="err" id="e1"></div>
+        <button class="btn primary" style="width:100%;justify-content:center">Sign in</button>
+      </form>
+      <form id="fUp" class="tab-pane" autocomplete="on">
+        <div class="field"><label for="u2">Username</label><input id="u2" name="username" autocomplete="username" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_.\-]{3,32}"></div>
+        <div class="field"><label for="m2">Email (optional)</label><input id="m2" name="email" type="email" autocomplete="email"></div>
+        <div class="field"><label for="p2">Password</label><input id="p2" name="password" type="password" autocomplete="new-password" required minlength="8"></div>
+        <div class="field"><label for="p3">Confirm password</label><input id="p3" type="password" autocomplete="new-password" required></div>
+        <div class="progress" style="margin:-4px 0 4px"><div id="pwBar" style="width:0"></div></div>
+        <div class="small muted" id="pwHint">At least 8 characters, including letters and digits.</div>
+        <div class="err" id="e2"></div>
+        <button class="btn primary" style="width:100%;justify-content:center">Create account</button>
+      </form>
+      <p class="small muted" style="margin-top:14px;text-align:center"><a href="/index.html">What is this app?</a> · <a href="/games.html">Learn & Play</a></p>
+    </div>
+  </div>
+</div>
+<script>
+(async function () {
+  await AHP.init("login", false);
+  if (AHP.user) { location.href = "/dashboard.html"; return; }
+  const next = new URLSearchParams(location.search).get("next") || "/dashboard.html";
+  const tabs = AHP.$$("#authTabs button");
+  const show = (t) => { tabs.forEach((b) => b.classList.toggle("on", b.dataset.tab === t)); AHP.$("#fIn").classList.toggle("on", t === "in"); AHP.$("#fUp").classList.toggle("on", t === "up"); };
+  tabs.forEach((b) => (b.onclick = () => show(b.dataset.tab)));
+  const info = await AHP.api("/api/public/info", { noRedirect: true });
+  if (!info.has_users) { AHP.$("#firstRun").style.display = "block"; show("up"); }
+  if (!info.allow_signup) tabs[1].style.display = "none";
+
+  AHP.$("#p2").oninput = (e) => {
+    const v = e.target.value; let s = 0;
+    if (v.length >= 8) s++; if (v.length >= 12) s++; if (/[A-Z]/.test(v) && /[a-z]/.test(v)) s++; if (/\d/.test(v)) s++; if (/[^A-Za-z0-9]/.test(v)) s++;
+    AHP.$("#pwBar").style.width = (s * 20) + "%";
+    AHP.$("#pwHint").textContent = ["Too short", "Weak", "Fair", "Good", "Strong", "Very strong"][s] + " password";
+  };
+  AHP.$("#fIn").onsubmit = async (e) => {
+    e.preventDefault(); AHP.$("#e1").textContent = "";
+    try {
+      await AHP.post("/api/auth/login", { username: AHP.$("#u1").value, password: AHP.$("#p1").value }, { quiet: true, noRedirect: true });
+      location.href = next;
+    } catch (err) { AHP.$("#e1").textContent = err.message; }
+  };
+  AHP.$("#fUp").onsubmit = async (e) => {
+    e.preventDefault(); AHP.$("#e2").textContent = "";
+    if (AHP.$("#p2").value !== AHP.$("#p3").value) { AHP.$("#e2").textContent = "Passwords do not match."; return; }
+    try {
+      await AHP.post("/api/auth/signup", { username: AHP.$("#u2").value, email: AHP.$("#m2").value, password: AHP.$("#p2").value }, { quiet: true, noRedirect: true });
+      location.href = "/dashboard.html";
+    } catch (err) { AHP.$("#e2").textContent = err.message; }
+  };
+})();
+</script>
+</body>
+</html>
